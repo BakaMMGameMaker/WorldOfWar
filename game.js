@@ -2,15 +2,9 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const BT_STATUS = {
-    SUCCESS: 'SUCCESS',
-    FAILURE: 'FAILURE',
-    RUNNING: 'RUNNING'
-};
+const BT_STATUS = { SUCCESS: 'SUCCESS', FAILURE: 'FAILURE', RUNNING: 'RUNNING' };
 
-class Node {
-    tick(tickContext) { return BT_STATUS.FAILURE; }
-}
+class Node { tick(tickContext) { return BT_STATUS.FAILURE; } }
 
 class Sequence extends Node {
     constructor(children) {
@@ -45,9 +39,7 @@ class Action extends Node {
         super();
         this.execute = actionFn;
     }
-    tick(tickContext) {
-        return this.execute(tickContext);
-    }
+    tick(tickContext) { return this.execute(tickContext); }
 }
 
 class UnitCard {
@@ -71,7 +63,7 @@ class UnitCard {
     checkClick(mx, my) {
         if (mx >= this.x && mx <= this.x + this.w && my >= this.y && my <= this.y + this.h) {
             if (this.state === 'SELECTED') {
-                return { action: 'START_PLACING', unit: this.unit };
+                return { action: 'DEPLOYING', unit: this.unit };
             } else if (this.state === 'AVAILABLE') {
                 this.owner.cards.forEach(c => { if (c.state === 'SELECTED') c.state = 'AVAILABLE' });
                 this.state = 'SELECTED';
@@ -85,8 +77,7 @@ class UnitCard {
         ctx.save();
         ctx.translate(this.x, this.y);
         let textColor, borderColor, glow = 0;
-        const mainBlue = '#3498db';
-        const neonBlue = '#00f2ff';
+        const mainBlue = '#3498db'; const neonBlue = '#00f2ff';
 
         switch (this.state) {
             case 'AVAILABLE': textColor = mainBlue; borderColor = mainBlue; break;
@@ -101,14 +92,11 @@ class UnitCard {
         ctx.fillStyle = 'rgba(20, 20, 20, 0.9)';
         ctx.fill();
 
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = this.state === 'SELECTED' ? 3 : 1;
-        ctx.shadowBlur = glow;
-        ctx.shadowColor = borderColor;
+        ctx.strokeStyle = borderColor; ctx.lineWidth = this.state === 'SELECTED' ? 3 : 1;
+        ctx.shadowBlur = glow; ctx.shadowColor = borderColor;
         ctx.stroke();
 
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = textColor;
+        ctx.shadowBlur = 0; ctx.fillStyle = textColor;
         ctx.font = 'bold 16px "Microsoft JhengHei"';
         ctx.fillText(this.unit.name, 15, 22);
         ctx.font = '14px "Courier New"';
@@ -117,84 +105,9 @@ class UnitCard {
     }
 }
 
+// 要塞
 class Fortress {
-    static FORTRESS_STATE = {
-        NORMAL: 'NORMAL',
-        SHOW_CARDS: 'SHOW_CARDS',
-        PLACING: 'PLACING',
-        COMMANDING: 'COMMANDING',
-    };
-
-    static AI = {
-        // 寻找离要塞最近且未被锁定的敌对狙击手
-        findTargetSniper: (ctx) => {
-            const blueSnipers = units.filter(u => u.side === 'blue' && u.alive && u instanceof SniperUnit);
-            const lockedTargets = units
-                .filter(u => u.side === 'red' && u.getPriorityTarget())
-                .map(u => u.getPriorityTarget()); // 找出已经被红方无人机锁定的狙击手
-
-            let bestTarget = null;
-            let minDist = Infinity;
-
-            blueSnipers.forEach(s => {
-                if (!lockedTargets.includes(s)) {
-                    const d = Math.hypot(s.x - ctx.fortress.x, s.y - ctx.fortress.y);
-                    if (d < minDist) {
-                        minDist = d;
-                        bestTarget = s;
-                    }
-                }
-            });
-
-            if (bestTarget) {
-                ctx.blackboard.targetSniper = bestTarget;
-                return BT_STATUS.SUCCESS;
-            }
-            return BT_STATUS.FAILURE;
-        },
-
-        // 检查是否有空闲无人机
-        manageExistingDrones: (ctx) => {
-            const idleDrones = units.filter(u =>
-                u instanceof DroneUnit &&
-                u.side === 'red' &&
-                u.alive &&
-                !u.getPriorityTarget()
-            );
-            if (idleDrones.length === 0) return BT_STATUS.FAILURE;
-            const target = ctx.blackboard.targetSniper;
-            idleDrones.forEach(drone => {
-                drone.manualTarget = target;
-            });
-            return BT_STATUS.SUCCESS;
-        },
-
-        // 尝试部署新无人机
-        tryDeployDrone: (ctx) => {
-            const droneData = CONFIG.units.find(u => u.id === 'drone');
-            const deployNum = 2;
-            const deployCost = droneData.cost * deployNum;
-            if (ctx.fortress.ap >= deployCost) {
-                ctx.fortress.ap -= deployCost;
-                const target = ctx.blackboard.targetSniper;
-                // 生成两台
-                for (let i = 0; i < deployNum; i++) {
-                    const newDrone = new droneData.class(
-                        'red',
-                        target.x,
-                        target.y,
-                        ctx.fortress.colorTheme
-                    );
-                    newDrone.y += i * newDrone.collisionRadius - newDrone.collisionRadius / 2;
-                    // 锁定目标
-                    newDrone.manualTarget = target;
-                    units.push(newDrone);
-                }
-                return BT_STATUS.SUCCESS;
-            }
-            return BT_STATUS.FAILURE;
-        }
-    };
+    static FORTRESS_STATE = { NORMAL: 'NORMAL', SHOW_CARDS: 'SHOW_CARDS', DEPLOYING: 'PLACING', COMMANDING: 'COMMANDING' };
 
     constructor(side, x, y, colorTheme) {
         this.side = side;
@@ -204,53 +117,134 @@ class Fortress {
         this.colorTheme = colorTheme;
         this.isAI = side === 'red';
         this.isAI = false;
-        if (this.isAI) {
-            this.blackboard = {};
-            this.aiInterval = 0.5; // 决策频率 (0.5秒一次)
-            this.aiTimer = 0;
 
-            // 行为树
-            this.btRoot = new Sequence([
-                new Action(Fortress.AI.findTargetSniper), // 有目标狙击手
-                new Selector([
-                    new Action(Fortress.AI.manageExistingDrones), // 调度现有无人机
-                    new Action(Fortress.AI.tryDeployDrone)        // 尝试部署
-                ])
-            ]);
+        if (this.isAI) {
+            // 待接入 LLM
         }
         else {
             this.state = Fortress.FORTRESS_STATE.NORMAL;
-            this.selectedUnitData = null;
-            this.selectedUnit = null;
-            this.cards = CONFIG.units.map((u, index) => {
-                const startX = 120;
-                const startY = 300 + (index * 70);
+            this.selectedUnitData = null; this.selectedUnit = null;
+            this.cards = CONFIG.cards.map((u, index) => {
+                const startX = 120; const startY = 300 + (index * 70);
                 return new UnitCard(u, startX, startY, this);
             });
         }
     }
 
-    think(dt) {
-        if (!this.isAI || !this.alive) return;
-        this.aiTimer += dt;
-        if (this.aiTimer >= this.aiInterval) {
-            this.aiTimer = 0;
-            const ctx = {
-                fortress: this,
-                blackboard: this.blackboard
-            };
-            this.btRoot.tick(ctx);
+    processAICommands(jsonCommands) {
+        if (!this.alive) return ['行動失敗：要塞已毀損']; // 注意，发现死亡之后，以后就不要再给 LLM 发消息了
+        try {
+            const data = typeof jsonCommands === 'string' ? JSON.parse(jsonCommands) : jsonCommands;
+            if (!data.actions || !Array.isArray(data.actions)) return ['格式錯誤：未發現 actions 列表'];
+            return data.actions.map((action, index) => {
+                const prefix = `[指令 #${index + 1} ${action.cmd}] `;
+                if (!action.cmd) return prefix + '錯誤：缺少 cmd 字段';
+                if (!action.target) return prefix + '錯誤：缺少 target 字段';
+                switch (action.cmd) {
+                    case 'DEPLOY':
+                        return prefix + this.executeAiDeploy(action.type, action.target);
+                    case 'ORDER':
+                        return prefix + this.executeAiOrder(action.id, action.target);
+                    default:
+                        return prefix + `錯誤：無效指令類型 ${action.cmd}`;
+                }
+            });
+        } catch (e) {
+            return ['JSON 解析失敗：請確保輸出標準的 JSON 格式'];
+        }
+    }
+
+    inferTask(unitClass, targetRef) {
+        if (!targetRef) return { ok: false, reason: '未指定 target' };
+        // 坐标
+        if (typeof targetRef === 'object' && targetRef.x !== undefined && targetRef.y !== undefined) {
+            const tx = targetRef.x; const ty = targetRef.y;
+            const allForts = [blueFortress, redFortress];
+            for (let f of allForts) {
+                if (Math.hypot(tx - f.x, ty - f.y) <= CONFIG.fortressSizes[0]) {
+                    if (f.side === this.side) return { ok: false, reason: '禁止鎖定己方要塞' };
+                    if (!BaseUnit.canClassAttack(unitClass, f)) return { ok: false, reason: '該兵種無法攻擊要塞' };
+                    return { ok: true, task: 'ATTACK', finalTarget: f };
+                }
+            }
+            return { ok: true, task: 'MOVE', finalTarget: { x: tx, y: ty } };
+        }
+        // 特定字符串
+        if (targetRef === 'FORTRESS_blue' || targetRef === 'FORTRESS_red') {
+            const targetFort = (targetRef === 'FORTRESS_blue') ? blueFortress : redFortress;
+            if (targetFort.side === this.side) return { ok: false, reason: '禁止鎖定己方要塞' };
+            if (!BaseUnit.canClassAttack(unitClass, targetFort)) return { ok: false, reason: '該兵種無法攻擊要塞' };
+            return { ok: true, task: 'ATTACK', finalTarget: targetFort };
+        }
+        // 单位 ID
+        if (typeof targetRef === 'number') {
+            const targetUnit = units.find(u => u.unitId === targetRef && u.alive);
+            if (!targetUnit) return { ok: false, reason: `目標單位 ID ${targetRef} 不存在或已陣亡` };
+            if (targetUnit.side === this.side) {
+                return { ok: true, task: 'FOLLOW', finalTarget: targetUnit };
+            } else {
+                if (!BaseUnit.canClassAttack(unitClass, targetUnit)) return { ok: false, reason: '無法鎖定該目標' };
+                return { ok: true, task: 'ATTACK', finalTarget: targetUnit };
+            }
+        }
+        return { ok: false, reason: '無法識別的目標格式' };
+    }
+
+    executeAiDeploy(unitTypeId, targetRef) {
+        const stats = CONFIG.UNIT_STATS[unitTypeId];
+        if (!stats) return `失敗：兵種 ${unitTypeId} 不存在`; // todo: 未解鎖
+        if (this.ap < stats.cost) return `失敗：行動值不足 (需 ${stats.cost})`;
+
+        // 验证
+        const inference = this.inferTask(stats.class, targetRef);
+        if (!inference.ok) return `部署攔截：${inference.reason}`;
+
+        this.ap -= stats.cost;
+        const newUnit = new stats.class(this);
+        const resultDesc = this.applyTargetToUnit(newUnit, inference.task, inference.finalTarget);
+        units.push(newUnit);
+
+        uiManager.add(`[AI] 部署 ${stats.name}`, this.colorTheme); // todo: 仅调试
+        return `成功：已投入 ${stats.name} (ID: ${newUnit.unitId})，意圖：${resultDesc}`;
+    }
+
+    executeAiOrder(unitId, targetRef) {
+        const unit = units.find(u => u.unitId === unitId && u.side === this.side && u.alive);
+        if (!unit) return `失敗：找不到 ID 為 ${unitId} 的存活友軍`;
+
+        // 验证
+        const inference = this.inferTask(unit.constructor, targetRef);
+        if (!inference.ok) return `指令拒絕：${inference.reason}`;
+
+        const resultDesc = this.applyTargetToUnit(unit, inference.task, inference.finalTarget);
+        return `成功：單位 ${unitId} 已響應，意圖：${resultDesc}`;
+    }
+
+    applyTargetToUnit(unit, task, finalTarget) {
+        unit.resetState();
+        switch (task) {
+            case 'MOVE':
+                unit.targetX = finalTarget.x;
+                unit.targetY = finalTarget.y;
+                unit.hasMoveOrder = true;
+                return `移至坐標 (${Math.floor(unit.targetX)}, ${Math.floor(unit.targetY)})`;
+            case 'ATTACK':
+                unit.cmdTarget = finalTarget;
+                const name = (finalTarget instanceof Fortress) ? '敵軍要塞' : `敵機 ${finalTarget.unitId}`;
+                return `正在進攻 ${name}`;
+            case 'FOLLOW':
+                unit.followTarget = finalTarget;
+                return `跟隨友方單位 ${finalTarget.unitId}`;
+            default:
+                return '進入待機模式';
         }
     }
 
     switchState(newState) {
         if (newState === Fortress.FORTRESS_STATE.NORMAL) {
-            this.cards.forEach(card => {
-                if (card.state === 'SELECTED') card.state = 'AVAILABLE';
-            });
+            this.cards.forEach(card => { if (card.state === 'SELECTED') card.state = 'AVAILABLE'; });
             if (this.selectedUnit) this.selectedUnit.isSelected = false;
-            this.selectedUnit = null;
-            this.selectedUnitData = null;
+            this.selectedUnit = null; this.selectedUnitData = null;
         }
         else if (newState === Fortress.FORTRESS_STATE.COMMANDING) {
             uiManager.add(`戰術單位已就緒`, this.colorTheme);
@@ -264,26 +258,39 @@ class Fortress {
             this.ap += CONFIG.apRegenPerSecond * dt;
             if (this.ap > CONFIG.maxAp) this.ap = CONFIG.maxAp;
         }
-        if (!this.isAI && this.state === Fortress.FORTRESS_STATE.SHOW_CARDS) {
-            this.cards.forEach(card => card.update()); // 更新卡片
-        }
+        if (!this.isAI && this.state === Fortress.FORTRESS_STATE.SHOW_CARDS) this.cards.forEach(card => card.update());
     }
 
     takeDamage(amt) {
         this.hp -= amt;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.alive = false;
+        if (this.hp > 0) return;
+        this.hp = 0;
+        this.alive = false;
+    }
+
+    getClickedUnit(mx, my, radius) {
+        let clickedUnit = null;
+        for (let u of units) {
+            if (!u.alive) continue;
+            const sPos = worldToScreen(u.x, u.y);
+            const d = Math.hypot(sPos.x - mx, sPos.y - my);
+            if (d > radius) continue;
+            radius = d;
+            clickedUnit = u;
         }
+        return clickedUnit;
     }
 
     handleInput(mx, my, type, otherFortress) {
         const worldPos = screenToWorld(mx, my);
         const wx = worldPos.x;
         const wy = worldPos.y;
+
         const clickedSelf = this.isClicked(wx, wy);
         let isUIClicked = false;
         const allFortresses = [this, otherFortress];
+
+        let clickedUnit = this.getClickedUnit(mx, my, 35);
 
         switch (this.state) {
             case Fortress.FORTRESS_STATE.NORMAL:
@@ -294,12 +301,10 @@ class Fortress {
                     return true; // click self
                 }
                 // 点击己方单位
-                for (let u of units) {
-                    if (u.side === this.side && u.alive && Math.hypot(u.x - wx, u.y - wy) < 30) {
-                        this.selectedUnit = u;
-                        this.switchState(Fortress.FORTRESS_STATE.COMMANDING);
-                        return true; // click unit
-                    }
+                if (clickedUnit && clickedUnit.side === this.side) {
+                    this.selectedUnit = clickedUnit;
+                    this.switchState(Fortress.FORTRESS_STATE.COMMANDING);
+                    return true; // click unit
                 }
                 break;
 
@@ -312,52 +317,74 @@ class Fortress {
                     const result = card.checkClick(mx, my);
                     if (!result) continue;
                     isUIClicked = true;
-                    if (result.action === 'START_PLACING') {
+                    if (result.action === 'DEPLOYING') {
                         this.selectedUnitData = result.unit;
-                        this.switchState(Fortress.FORTRESS_STATE.PLACING);
+                        this.switchState(Fortress.FORTRESS_STATE.DEPLOYING);
                         break;
                     }
                 }
                 break;
 
-            case Fortress.FORTRESS_STATE.PLACING:
+            case Fortress.FORTRESS_STATE.DEPLOYING:
                 if (type !== 'click') {
+                    uiManager.add('指令已取消', '#ccc');
                     this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                     return false;
                 }
+                let deployingTarget = null;
+                let followTarget = null;
                 // 点击要塞
-                let targetFort = null;
                 for (let f of allFortresses) {
                     if (!f.isClicked(wx, wy)) continue;
-                    isUIClicked = true; // click fortress
                     if (f.side === 'blue') {
-                        uiManager.add('禁止在我方要塞區域部署單位', '#ff4444');
                         this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                         return true; // click fortress
                     }
-                    targetFort = f;
+                    if (!BaseUnit.canClassAttack(this.selectedUnitData.class, f)) {
+                        uiManager.add('無法鎖定該目標', '#ff4444');
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true;
+                    }
+                    isUIClicked = true; // click fortress
+                    deployingTarget = f;
+                }
+                // 点击单位，友方跟随，敌方攻击
+                if (!deployingTarget && clickedUnit) {
+                    if (clickedUnit.side !== this.side) {
+                        if (!BaseUnit.canClassAttack(this.selectedUnitData.class, clickedUnit)) {
+                            uiManager.add('無法鎖定該目標', '#ff4444');
+                            this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                            return true;
+                        }
+                        deployingTarget = clickedUnit;
+                    } else {
+                        followTarget = clickedUnit;
+                    }
+                    isUIClicked = true; // click any unit
                 }
                 // 费用检查
                 if (this.ap < this.selectedUnitData.cost) {
-                    uiManager.add('行動值(AP)不足', '#ff4444');
+                    uiManager.add('行動值不足', '#ff4444');
                     this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                     return true; // placing
                 }
                 this.ap -= this.selectedUnitData.cost;
-                let u = new this.selectedUnitData.class(this.side, wx, wy, this.colorTheme)
+                let u = new this.selectedUnitData.class(this);
                 units.push(u);
-                if (targetFort) {
-                    u.manualTarget = targetFort;
+                if (deployingTarget) {
+                    u.cmdTarget = deployingTarget;
+                } else if (followTarget) {
+                    u.followTarget = followTarget;
                 } else {
                     u.hasMoveOrder = true;
+                    u.targetX = wx; u.targetY = wy;
                 }
                 uiManager.add(`${this.selectedUnitData.name} 已投入戰場`, this.colorTheme);
                 this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                 break;
 
             case Fortress.FORTRESS_STATE.COMMANDING:
-                // 单位中途阵亡
-                if (!this.selectedUnit || !this.selectedUnit.alive) {
+                if (!this.selectedUnit || !this.selectedUnit.alive) { // 单位中途阵亡
                     this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                     return false;
                 }
@@ -366,48 +393,56 @@ class Fortress {
                     this.switchState(Fortress.FORTRESS_STATE.NORMAL);
                     return false;
                 }
-                let potentialTarget = null;
-                // 查找单位目标
-                for (let u of units) {
-                    if (Math.hypot(u.x - wx, u.y - wy) < 30) {
-                        if (u.side === this.side) {
-                            uiManager.add('指令已取消', '#ccc');
-                            this.switchState(Fortress.FORTRESS_STATE.NORMAL);
-                            return false;
-                        }
-                        if (!u.canAttack(u)) {
-                            uiManager.add('無法鎖定該目標', '#ff4444');
-                            this.switchState(Fortress.FORTRESS_STATE.NORMAL);
-                            return true;
-                        }
-                        isUIClicked = true; // click any unit
-                        potentialTarget = u;
-                        break;
+                let cmdTarget = null;
+                // 单位目标
+                if (clickedUnit) {
+                    if (clickedUnit === this.selectedUnit) {
+                        uiManager.add('指令已取消', '#ffffff');
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true;
                     }
-                }
-                // 查找要塞目标
-                if (!potentialTarget) {
-                    for (let f of allFortresses) {
-                        if (f.isClicked(wx, wy)) {
-                            if (f.side === this.side) {
-                                this.switchState(Fortress.FORTRESS_STATE.NORMAL);
-                                return true; // click self
-                            }
-                            isUIClicked = true; // click fortress
-                            potentialTarget = f;
-                            break;
+                    if (clickedUnit.side === this.side) {
+                        if (clickedUnit.followTarget === this.selectedUnit) {
+                            uiManager.add('禁止循環跟隨', '#ff4444');
+                        } else {
+                            this.selectedUnit.resetState();
+                            this.selectedUnit.followTarget = clickedUnit;
+                            uiManager.add(`已跟隨指定單位`, this.colorTheme);
                         }
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true;
                     }
+                    if (!this.selectedUnit.canAttack(clickedUnit)) {
+                        uiManager.add('無法鎖定該目標', '#ff4444');
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true;
+                    }
+                    isUIClicked = true; // click any unit
+                    cmdTarget = clickedUnit;
                 }
-                // 执行结果
-                if (potentialTarget) {
-                    this.selectedUnit.manualTarget = potentialTarget;
-                    this.selectedUnit.autoTarget = null;
-                    this.selectedUnit.hasMoveOrder = false;
+                // 要塞目标
+                for (let f of allFortresses) {
+                    if (!f.isClicked(wx, wy)) continue;
+                    if (f.side === this.side) {
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true; // click self
+                    }
+                    if (!this.selectedUnit.canAttack(f)) {
+                        uiManager.add('無法鎖定該目標', '#ff4444');
+                        this.switchState(Fortress.FORTRESS_STATE.NORMAL);
+                        return true;
+                    }
+                    isUIClicked = true; // click fortress
+                    cmdTarget = f;
+                    break;
+                }
+                // 攻击敌方单位或移动
+                this.selectedUnit.resetState();
+                if (cmdTarget) {
+                    this.selectedUnit.cmdTarget = cmdTarget;
                     uiManager.add(`已鎖定目標`, this.colorTheme);
                 } else {
                     this.selectedUnit.targetX = wx; this.selectedUnit.targetY = wy;
-                    this.selectedUnit.manualTarget = null;
                     this.selectedUnit.hasMoveOrder = true;
                     uiManager.add(`移動至 ${Math.floor(wx)}, ${Math.floor(wy)}`, this.colorTheme);
                 }
@@ -428,12 +463,12 @@ class Fortress {
         if (this.state === Fortress.FORTRESS_STATE.SHOW_CARDS) {
             this.cards.forEach(card => card.draw(ctx));
         }
-        if (this.state === Fortress.FORTRESS_STATE.PLACING) {
-            this.drawPlacingOverlay(ctx);
+        if (this.state === Fortress.FORTRESS_STATE.DEPLOYING) {
+            this.drawDeployingOverlay(ctx);
         }
     }
 
-    drawPlacingOverlay(ctx) {
+    drawDeployingOverlay(ctx) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 242, 255, 0.1)';
         ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
@@ -508,15 +543,12 @@ class Fortress {
         ctx.restore();
     }
 
-    isClicked(wx, wy) {
-        return Math.hypot(wx - this.x, wy - this.y) < CONFIG.fortressSizes[0];
-    }
+    isClicked(wx, wy) { return Math.hypot(wx - this.x, wy - this.y) < CONFIG.fortressSizes[0]; }
 }
 
 class Particle {
     constructor(x, y, color) {
-        this.x = x;
-        this.y = y;
+        this.x = x; this.y = y;
         this.vx = (Math.random() - 0.5) * 4;
         this.vy = (Math.random() - 0.5) * 4;
         this.life = 1.0;
@@ -525,8 +557,7 @@ class Particle {
     }
 
     update(dt) {
-        this.x += this.vx;
-        this.y += this.vy;
+        this.x += this.vx; this.y += this.vy;
         this.life -= dt * 1.5;
     }
 
@@ -534,9 +565,7 @@ class Particle {
         if (this.life <= 0) return;
         ctx.save();
         ctx.globalAlpha = Math.min(1, Math.max(0, this.life));
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.size, this.size);
         ctx.restore();
     }
@@ -581,6 +610,7 @@ class Bullet {
             }
         }
         const targetFort = this.owner.side === 'blue' ? redFort : blueFort;
+        if (!this.owner.canAttack(targetFort)) return;
         if (Math.hypot(this.x - targetFort.x, this.y - targetFort.y) < CONFIG.fortressSizes[0]) {
             targetFort.takeDamage(this.damage);
             this.onHit(particles);
@@ -615,34 +645,51 @@ class Bullet {
 }
 
 class BaseUnit {
-    constructor(side, targetX, targetY, colorTheme) {
-        // 基本信息
-        this.side = side;
-        this.colorTheme = colorTheme;
+    static canClassAttack(unitCls, target) {
+        if (!target || !target.alive) return false;
+        const allowed = unitCls.allowedTargets || [];
+        return allowed.some(cls => target instanceof cls);
+    }
 
-        // 单位状态
-        this.x = (side === 'blue') ? 0 : CONFIG.worldWidth; this.y = CONFIG.worldHeight / 2;
-        this.targetX = targetX; this.targetY = targetY;
-        this.angle = (side === 'blue') ? 0 : Math.PI;
-        this.maxHp = this.hp = 1; this.alive = true;
+    constructor(owner) {
+        // 基本信息
+        this.owner = owner;
+        this.side = owner.side;
+        this.unitId = unitIdCounter++;
+        this.colorTheme = owner.colorTheme;
+        this.alive = true;
+
+        // 运动状态
+        this.x = (this.side === 'blue') ? 0 : CONFIG.worldWidth; this.y = CONFIG.worldHeight / 2;
+        this.angle = (this.side === 'blue') ? 0 : Math.PI;
         this.vel = 0; this.angVel = 0;
 
-        this.manualTarget = null; // 要塞指定的敌方单位
-        this.autoTarget = null;   // AI 自动扫描发现的单位
-        this.isSelected = false;
-        this.isNavigating = false;
-        this.hasMoveOrder = false;
+        // 行为状态
+        this.targetX = this.targetY = null;
+        this.cmdTarget = null;    // 要塞指定的敌方单位
+        this.autoTarget = null;   // 自动扫描发现的敌军
+        this.followTarget = null; // 要跟随的单位
         this.isDeploying = true;
+        this.hasMoveOrder = false;
+        this.isNavigating = false;
+        this.isSelected = false;
 
-        // SelectionUI 动画数据
+        // 动画数据
         this.reloadFlashTimer = 0;
         this.reloadFlashDuration = 0.15;
         this.lastReloaded = true;
 
         this.hitFlashTimer = 0;
         this.hitFlashDuration = 0.15;
+    }
 
-        this.allowedTargets = []; // 可攻击的单位
+    loadStats(stats) {
+        this.maxHp = this.hp = stats.hp;
+        this.attackRange = stats.attackRange;
+        this.reloadTime = stats.reloadTime * 1000;
+        this.unitMaxSpeed = stats.maxSpeed;
+        this.bulletSpeed = stats.bulletSpeed;
+        this.damage = stats.damage;
     }
 
     move(dt, tx, ty, stopRadius = 0, smoothStop = true) {
@@ -693,15 +740,11 @@ class BaseUnit {
         }
     }
 
-    canAttack(target) {
-        if (!target || !target.alive) return false;
-        return this.allowedTargets.some(cls => target instanceof cls);
-    }
+    canAttack(target) { return BaseUnit.canClassAttack(this.constructor, target); }
 
     updateTimers(dt) {
         if (this.reloadFlashTimer > dt) this.reloadFlashTimer -= dt;
         else this.reloadFlashTimer = 0;
-
         if (this.hitFlashTimer > dt) this.hitFlashTimer -= dt;
         else this.hitFlashTimer = 0;
     }
@@ -712,8 +755,10 @@ class BaseUnit {
     }
 
     getPriorityTarget() {
-        if (this.manualTarget && this.manualTarget.alive) return this.manualTarget;
+        if (this.cmdTarget && this.cmdTarget.alive) return this.cmdTarget;
+        this.cmdTarget = null;
         if (this.autoTarget && this.autoTarget.alive) return this.autoTarget;
+        this.autoTarget = null;
         return null;
     }
 
@@ -732,11 +777,14 @@ class BaseUnit {
     }
 
     drawNavigationPath(ctx) {
-        if (!this.isNavigating) return;
-        const enemy = this.getPriorityTarget();
-        const tx = enemy ? enemy.x : this.targetX;
-        const ty = enemy ? enemy.y : this.targetY;
+        if (this.followTarget && this.followTarget.alive) {
+            this.drawFollowLink(ctx);
+            return;
+        }
 
+        if (!this.isNavigating) return;
+        const tx = this.targetX;
+        const ty = this.targetY;
         const dx = tx - this.x; const dy = ty - this.y;
         const dist = Math.hypot(dx, dy);
         if (dist < 20) return;
@@ -762,6 +810,30 @@ class BaseUnit {
         ctx.beginPath();
         ctx.arc(tx, ty, 4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
+    }
+
+    drawFollowLink(ctx) {
+        const leader = this.followTarget;
+        const now = performance.now();
+
+        ctx.save();
+
+        // 浅色虚线
+        ctx.strokeStyle = this.colorTheme;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 1.5;
+
+        const dashPattern = [10, 8];
+        ctx.setLineDash(dashPattern);
+
+        ctx.lineDashOffset = -(now * 0.05);
+
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(leader.x, leader.y);
+        ctx.stroke();
+
         ctx.restore();
     }
 
@@ -812,20 +884,15 @@ class BaseUnit {
         if (this.y - r < 0) this.y = r; if (this.y + r > CONFIG.worldHeight) this.y = CONFIG.worldHeight - r;
 
         // 要塞硬碰撞
-        if (this.domain != 'GROUND') return;
+        if (this.isDeploying || this.domain != 'GROUND') return;
         const allFortresses = [blueFortress, redFortress];
         for (let f of allFortresses) {
             const dist = Math.hypot(this.x - f.x, this.y - f.y);
             const minDist = r + CONFIG.fortressSizes[0];
-            if (dist < minDist) {
-                if (!this.isDeploying) {
-                    const angle = Math.atan2(this.y - f.y, this.x - f.x);
-                    this.x = f.x + Math.cos(angle) * minDist; this.y = f.y + Math.sin(angle) * minDist;
-                }
-                return true;
-            }
+            if (dist > minDist) continue;
+            const angle = Math.atan2(this.y - f.y, this.x - f.x);
+            this.x = f.x + Math.cos(angle) * minDist; this.y = f.y + Math.sin(angle) * minDist;
         }
-        return false;
     }
 
     drawSelectionUI(ctx) {
@@ -838,7 +905,7 @@ class BaseUnit {
         const isLowHp = hpPercent < 0.3;
 
         let hpColor, hpGlow;
-        if (isLowHp) { // 低血量
+        if (isLowHp) {
             const pulse = (Math.sin(now / 150) + 1) / 2;
             const r = 255;
             const g = Math.floor(60 + 40 * pulse);
@@ -872,7 +939,7 @@ class BaseUnit {
         ctx.strokeStyle = hpColor;
 
         ctx.beginPath();
-        // 顺时针绘制生命值
+        // 生命值
         const endAngle = startAngle + (Math.PI * 2 * hpPercent);
         ctx.arc(0, 0, 48, startAngle, endAngle, false);
         ctx.stroke();
@@ -883,7 +950,7 @@ class BaseUnit {
         ctx.beginPath();
         ctx.arc(0, 0, this.attackRange, 0, Math.PI * 2);
         ctx.fillStyle = this.colorTheme;
-        ctx.globalAlpha = pulse; // 低透明度填充
+        ctx.globalAlpha = pulse;
         ctx.fill();
         ctx.restore();
 
@@ -895,7 +962,7 @@ class BaseUnit {
 
         const isReady = reloadPercent === 1;
         if (isReady && !this.lastReloaded) {
-            this.reloadFlashTimer = this.reloadFlashDuration; // 装填完成时触发 flashTimer
+            this.reloadFlashTimer = this.reloadFlashDuration; // 装填完成
         }
         this.lastReloaded = isReady;
 
@@ -940,7 +1007,6 @@ class BaseUnit {
         ctx.shadowColor = sColor;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
-        // 装填进度圆弧
         ctx.arc(0, 0, 42, startAngle, startAngle + (Math.PI * 2 * reloadPercent), false);
         ctx.stroke();
 
@@ -953,8 +1019,15 @@ class BaseUnit {
         ctx.restore();
     }
 
+    resetState() {
+        this.cmdTarget = null;
+        this.autoTarget = null;
+        this.followTarget = null;
+        this.isNavigating = false;
+        this.hasMoveOrder = false;
+    }
+
     static AI = {
-        hasManualTarget: (ctx) => (ctx.unit.manualTarget && ctx.unit.manualTarget.alive) ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE,
         isDeploying: (ctx) => ctx.unit.isDeploying ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE,
         doDeploy: (ctx) => {
             const u = ctx.unit;
@@ -972,11 +1045,11 @@ class BaseUnit {
                 return BT_STATUS.SUCCESS;
             }
         },
-        hasMoveOrder: (ctx) => ctx.unit.hasMoveOrder ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE,
         moveToTarget: (ctx) => {
             const u = ctx.unit;
+            if (!u.hasMoveOrder) return BT_STATUS.FAILURE;
             const dist = Math.hypot(u.targetX - u.x, u.targetY - u.y);
-            if (dist < 5 && u.vel < 5) {
+            if (dist < 15 && u.vel < 5) {
                 u.vel = 0; u.isNavigating = false; u.hasMoveOrder = false;
                 return BT_STATUS.SUCCESS;
             }
@@ -988,26 +1061,54 @@ class BaseUnit {
         },
         fire: (ctx) => {
             const u = ctx.unit;
-            if (u.fire) {
-                u.fire();
+            if (!u.fire || !u.getPriorityTarget()) return BT_STATUS.FAILURE;
+            u.fire();
+            return BT_STATUS.SUCCESS;
+        },
+        followLeader: (ctx) => {
+            const u = ctx.unit;
+            const leader = u.followTarget;
+
+            // 领队不存在
+            if (!leader || !leader.alive) {
+                u.followTarget = null;
+                return BT_STATUS.FAILURE;
+            }
+
+            // 协助领队但不主动追击
+            const leaderPriorityTarget = leader.getPriorityTarget();
+            if (leaderPriorityTarget && u.canAttack(leaderPriorityTarget)) {
+                const distToEnemy = Math.hypot(leaderPriorityTarget.x - u.x, leaderPriorityTarget.y - u.y);
+                if (distToEnemy <= u.attackRange) {
+                    u.autoTarget = leaderPriorityTarget;
+                }
+            }
+
+            // 跟随移动
+            const distToLeader = Math.hypot(leader.x - u.x, leader.y - u.y);
+            const stopDist = u.collisionRadius + leader.collisionRadius + 20;
+
+            if (distToLeader > stopDist) {
+                const targetAngle = Math.atan2(leader.y - u.y, leader.x - u.x);
+                u.rotate(ctx.dt, targetAngle);
+                u.move(ctx.dt, leader.x, leader.y, stopDist);
+                return BT_STATUS.RUNNING;
+            } else {
+                u.rotate(ctx.dt, leader.angle);
                 return BT_STATUS.SUCCESS;
             }
-            return BT_STATUS.FAILURE;
         },
         idle: (ctx) => {
             const u = ctx.unit;
-            u.manualTarget = null;
-            u.autoTarget = null;
-            u.isNavigating = false;
-            u.hasMoveOrder = false;
+            u.resetState();
             return BT_STATUS.SUCCESS;
         },
     }
 }
 
 class VehicleUnit extends BaseUnit {
-    constructor(side, targetX, targetY, colorTheme) {
-        super(side, targetX, targetY, colorTheme);
+    constructor(owner) {
+        super(owner);
         this.domain = 'GROUND';
 
         this.turretAngVel = 0;
@@ -1067,7 +1168,7 @@ class VehicleUnit extends BaseUnit {
     static AI = {
         scanArea: (ctx) => {
             const u = ctx.unit;
-            if (u.manualTarget) return BT_STATUS.FAILURE;
+            if (u.cmdTarget) return BT_STATUS.FAILURE;
             const found = units.find(target =>
                 target.side !== u.side && target.alive && u.canAttack(target) &&
                 Math.hypot(target.x - u.x, target.y - u.y) <= u.attackRange
@@ -1075,9 +1176,14 @@ class VehicleUnit extends BaseUnit {
             u.autoTarget = found || null;
             return found ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE;
         },
-        approachManualTarget: (ctx) => {
+        approachCmdTarget: (ctx) => {
             const u = ctx.unit;
-            const target = u.manualTarget;
+            const target = u.cmdTarget;
+            if (!target || !target.alive) {
+                u.cmdTarget = null;
+                return BT_STATUS.FAILURE;
+            }
+            u.targetX = target.x; u.targetY = target.y;
             const dist = Math.hypot(target.x - u.x, target.y - u.y);
             // 已进入射程且基本停车
             if (dist <= u.attackRange && u.vel < 10) {
@@ -1105,34 +1211,31 @@ class VehicleUnit extends BaseUnit {
 
 // 狙击手
 class SniperUnit extends VehicleUnit {
-    constructor(side, targetX, targetY, colorTheme) {
-        super(side, targetX, targetY, colorTheme);
-        this.maxHp = this.hp = 500;
-        this.collisionRadius = 40;
-        this.attackRange = 500;
-        this.fireCD = 2000;
+    static allowedTargets = [Fortress, VehicleUnit];
 
-        this.unitMaxSpeed = 50;
+    constructor(owner) {
+        super(owner);
+        this.loadStats(CONFIG.UNIT_STATS.sniper);
+
         this.unitAccel = 10;
-
-        this.unitAngMaxSpeed = 2;
-        this.unitAngAccel = 0.5;
-
-        this.turretMaxSpeed = 3.0;
-        this.turretAccel = 1;
-
-        this.bulletSpeed = 1200;
-        this.damage = 200;
-
-        this.allowedTargets = [Fortress, VehicleUnit];
+        this.unitAngMaxSpeed = 2; this.unitAngAccel = 0.5;
+        this.turretMaxSpeed = 3.0; this.turretAccel = 1;
+        this.collisionRadius = 40;
 
         this.btRoot = new Sequence([
             new Selector([
                 new Sequence([new Action(BaseUnit.AI.isDeploying), new Action(BaseUnit.AI.doDeploy)]),
-                new Sequence([new Action(BaseUnit.AI.hasMoveOrder), new Action(BaseUnit.AI.moveToTarget)]),
+                new Action(BaseUnit.AI.moveToTarget),
                 new Sequence([
-                    new Action(BaseUnit.AI.hasManualTarget), new Action(VehicleUnit.AI.approachManualTarget),
+                    new Action(VehicleUnit.AI.approachCmdTarget),
                     new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)
+                ]),
+                new Sequence([
+                    new Action(BaseUnit.AI.followLeader),
+                    new Selector([
+                        new Sequence([new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)]),
+                        new Action((ctx) => BT_STATUS.SUCCESS) // 防止进 idle
+                    ])
                 ]),
                 new Action(BaseUnit.AI.idle),
             ])
@@ -1140,7 +1243,7 @@ class SniperUnit extends VehicleUnit {
     }
 
     fire() {
-        if (performance.now() - this.lastFire < this.fireCD) return BT_STATUS.RUNNING;
+        if (performance.now() - this.lastFire < this.reloadTime) return BT_STATUS.RUNNING;
         this.lastFire = performance.now();
         let muzzleX = this.x + Math.cos(this.turretAngle) * 40; let muzzleY = this.y + Math.sin(this.turretAngle) * 40;
         bullets.push(new Bullet(muzzleX, muzzleY, this.turretAngle, this.bulletSpeed, this.damage, this, this.attackRange));
@@ -1165,9 +1268,7 @@ class SniperUnit extends VehicleUnit {
         ctx.moveTo(-18, -12); ctx.lineTo(18, -12); ctx.lineTo(24, 0);
         ctx.lineTo(18, 12); ctx.lineTo(-18, 12); ctx.lineTo(-24, 0);
         ctx.closePath();
-        ctx.fillStyle = '#1a1a1a';
-        ctx.strokeStyle = this.colorTheme;
-        ctx.lineWidth = 2;
+        ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = this.colorTheme; ctx.lineWidth = 2;
         ctx.fill(); ctx.stroke();
         ctx.restore();
 
@@ -1192,16 +1293,21 @@ class SniperUnit extends VehicleUnit {
 
 // 无人机
 class DroneUnit extends BaseUnit {
+    static allowedTargets = [Fortress, VehicleUnit];
+
     static AI = {
-        approachManualTarget: (ctx) => {
+        approachCmdTarget: (ctx) => {
             const u = ctx.unit;
-            const target = u.manualTarget;
+            const target = u.cmdTarget;
+            if (!target || !target.alive) {
+                u.cmdTarget = null;
+                return BT_STATUS.FAILURE;
+            }
+            u.targetX = target.x; u.targetY = target.y;
             const dist = Math.hypot(target.x - u.x, target.y - u.y);
             const minDist = target instanceof Fortress ? u.collisionRadius + 5 : 5;
-            if (dist <= minDist) {
-                // 触碰爆炸
-                return BT_STATUS.SUCCESS;
-            }
+            if (dist <= minDist) return BT_STATUS.SUCCESS; // 触碰爆炸
+
             u.isNavigating = true;
             const targetAngle = Math.atan2(target.y - u.y, target.x - u.x);
             u.rotate(ctx.dt, targetAngle);
@@ -1210,67 +1316,51 @@ class DroneUnit extends BaseUnit {
         },
     };
 
-    constructor(side, targetX, targetY, colorTheme) {
-        super(side, targetX, targetY, colorTheme);
+    constructor(owner) {
+        super(owner);
+        this.loadStats(CONFIG.UNIT_STATS.drone);
+
         this.domain = 'AIR';
-        this.maxHp = this.hp = 100;
-        this.collisionRadius = 20;
-        this.attackRange = 600;
-
-        this.unitMaxSpeed = 300;
+        this.vx = 0; this.vy = 0;
         this.unitAccel = 400;
-
         this.unitAngMaxSpeed = 8;
         this.unitAngAccel = 4;
-
-        this.damage = 500;
-
-        this.lastTargetAngle = 0;
-
-        this.allowedTargets = [Fortress, VehicleUnit];
-
-        this.vx = 0;
-        this.vy = 0;
-        // 转向灵敏度（越大拐弯越急，越小漂移感越强）
-        this.turnSensitivity = 5.0;
+        this.turnSensitivity = 5.0; // 转向灵敏度
+        this.collisionRadius = 20;
 
         this.btRoot = new Selector([
             new Sequence([new Action(BaseUnit.AI.isDeploying), new Action(BaseUnit.AI.doDeploy)]),
-            new Sequence([new Action(BaseUnit.AI.hasMoveOrder), new Action(BaseUnit.AI.moveToTarget)]),
-            new Sequence([new Action(BaseUnit.AI.hasManualTarget), new Action(DroneUnit.AI.approachManualTarget), new Action(BaseUnit.AI.fire)]),
+            new Action(BaseUnit.AI.moveToTarget),
+            new Sequence([new Action(DroneUnit.AI.approachCmdTarget), new Action(BaseUnit.AI.fire)]),
+            new Sequence([
+                new Action(BaseUnit.AI.followLeader),
+                new Selector([
+                    new Action(BaseUnit.AI.fire),
+                    new Action((ctx) => BT_STATUS.SUCCESS) // 防止进 idle
+                ])
+            ]),
             new Action(BaseUnit.AI.idle),
         ]);
     }
 
     move(dt, tx, ty, stopRadius = 0, smoothStop = true) {
-        const dx = tx - this.x;
-        const dy = ty - this.y;
+        const dx = tx - this.x; const dy = ty - this.y;
         const dist = Math.hypot(dx, dy);
-        // 到达后快速减速
-        if (dist < 5 + stopRadius) {
-            this.vx *= 0.95; this.vy *= 0.95;
-            if (this.vx <= 0.05 && this.vy <= 0.05) {
-                this.vx = 0; this.vy = 0;
-                return;
-            }
-        }
         // 计算期望速度
         const angleToTarget = Math.atan2(dy, dx);
         let speed = this.unitMaxSpeed;
-
         if (smoothStop) {
             const stopDist = (Math.hypot(this.vx, this.vy) ** 2) / (2 * this.unitAccel);
-            if (dist <= stopDist) speed = 0;
+            if (dist <= stopDist + stopRadius) speed = 0;
         }
-
         const desiredVx = Math.cos(angleToTarget) * speed;
         const desiredVy = Math.sin(angleToTarget) * speed;
-
         // 计算转向力并应用惯性
-        this.vx += (desiredVx - this.vx) * this.turnSensitivity * dt;
-        this.vy += (desiredVy - this.vy) * this.turnSensitivity * dt;
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
+        if (Math.abs(desiredVx - this.vx) <= 0.5) this.vx = desiredVx;
+        else this.vx += (desiredVx - this.vx) * this.turnSensitivity * dt;
+        if (Math.abs(desiredVy - this.vy) <= 0.5) this.vy = desiredVy;
+        else this.vy += (desiredVy - this.vy) * this.turnSensitivity * dt;
+        this.x += this.vx * dt; this.y += this.vy * dt;
     }
 
     // 空中单位：只有同种类型才会排斥
@@ -1299,7 +1389,6 @@ class DroneUnit extends BaseUnit {
         if (!this.alive) return;
         super.update(dt);
         this.applySeparation(dt, units);
-        // this.checkWorldCollision(); 允许空中单位飞出去
 
         const oldX = this.x; const oldY = this.y;
         const oldAngle = this.angle;
@@ -1310,9 +1399,8 @@ class DroneUnit extends BaseUnit {
 
     fire() {
         // 触碰爆炸
-        const target = this.manualTarget;
+        const target = this.cmdTarget;
         target.takeDamage(this.damage);
-        uiManager.add(`無人機已觸發自爆協議`, '#ff4444');
         this.hp = 0; this.alive = false;
         for (let i = 0; i < 20; i++) particles.push(new Particle(this.x, this.y, '#ff4400')); // 爆炸粒子
         return BT_STATUS.SUCCESS;
@@ -1334,9 +1422,7 @@ class DroneUnit extends BaseUnit {
         ctx.beginPath();
         ctx.moveTo(15, 0); ctx.lineTo(-10, -15); ctx.lineTo(-5, 0); ctx.lineTo(-10, 15);
         ctx.closePath();
-        ctx.fillStyle = '#222';
-        ctx.strokeStyle = this.colorTheme;
-        ctx.lineWidth = 2;
+        ctx.fillStyle = '#222'; ctx.strokeStyle = this.colorTheme; ctx.lineWidth = 2;
         ctx.fill();
         ctx.stroke();
         // 核心
@@ -1346,8 +1432,7 @@ class DroneUnit extends BaseUnit {
         ctx.fill();
         // 桨叶
         const bladeAngle = (performance.now() / 20);
-        ctx.strokeStyle = '#bebebe';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#bebebe'; ctx.lineWidth = 2;
         [{ x: -8, y: -12 }, { x: -8, y: 12 }].forEach(pos => {
             ctx.save();
             ctx.translate(pos.x, pos.y);
@@ -1367,41 +1452,42 @@ class DroneUnit extends BaseUnit {
     }
 }
 
+// 霰弹手
 class ShotgunUnit extends VehicleUnit {
-    constructor(side, targetX, targetY, colorTheme) {
-        super(side, targetX, targetY, colorTheme);
-        this.maxHp = this.hp = 250;
-        this.collisionRadius = 30;
-        this.attackRange = 250;
-        this.fireCD = 1000;
+    static allowedTargets = [VehicleUnit, DroneUnit];
 
-        this.unitMaxSpeed = 160;
+    constructor(owner) {
+        super(owner);
+        this.loadStats(CONFIG.UNIT_STATS.shotgun);
+
         this.unitAccel = 40;
+        this.unitAngMaxSpeed = 6; this.unitAngAccel = 2;
+        this.turretMaxSpeed = 6; this.turretAccel = 3;
 
-        this.unitAngMaxSpeed = 6;
-        this.unitAngAccel = 2;
+        this.collisionRadius = 30;
 
-        this.turretMaxSpeed = 6;
-        this.turretAccel = 3;
-
-        this.bulletSpeed = 800;
-        this.damage = 50;
-
-        this.allowedTargets = [Fortress, VehicleUnit, DroneUnit];
-
-        this.btRoot = new Sequence([
-            new Selector([
-                new Sequence([new Action(BaseUnit.AI.isDeploying), new Action(BaseUnit.AI.doDeploy)]),
-                new Sequence([new Action(BaseUnit.AI.hasMoveOrder), new Action(BaseUnit.AI.moveToTarget)]),
-                new Sequence([
-                    new Action(BaseUnit.AI.hasManualTarget), new Action(VehicleUnit.AI.approachManualTarget),
-                    new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)
-                ]),
-                new Sequence([
-                    new Action(VehicleUnit.AI.scanArea), new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)
-                ]),
-                new Action(BaseUnit.AI.idle),
-            ])
+        this.btRoot = new Selector([
+            // 部署阶段
+            new Sequence([new Action(BaseUnit.AI.isDeploying), new Action(BaseUnit.AI.doDeploy)]),
+            // 要塞指令
+            new Action(BaseUnit.AI.moveToTarget),
+            new Sequence([
+                new Action(VehicleUnit.AI.approachCmdTarget),
+                new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)
+            ]),
+            // 自动战斗
+            new Sequence([
+                new Action(VehicleUnit.AI.scanArea), new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)
+            ]),
+            // 小队跟随
+            new Sequence([
+                new Action(BaseUnit.AI.followLeader),
+                new Selector([
+                    new Sequence([new Action(VehicleUnit.AI.aimAtTarget), new Action(BaseUnit.AI.fire)]),
+                    new Action((ctx) => BT_STATUS.SUCCESS) // 防止进 idle
+                ])
+            ]),
+            new Action(BaseUnit.AI.idle),
         ]);
     }
 
@@ -1541,23 +1627,218 @@ class NotificationManager {
     }
 }
 
+class BattlefieldReporter {
+    constructor(side) {
+        this.side = side;
+        this.reportInterval = 2000; // 20 秒总结一次
+        this.timer = 0;
+    }
+    parseTargets(unitClass) {
+        const targets = unitClass.allowedTargets || [];
+        if (targets.length === 0) return '無';
+        return targets.map(cls => CONFIG.TYPE_NAMES[cls.name] || cls.name).join(', ');
+    }
+    getGameRules() {
+        const tableRows = Object.keys(CONFIG.UNIT_STATS).map(id => {
+            const s = CONFIG.UNIT_STATS[id];
+            const f = (val) => (val === null || val === undefined) ? '-' : val;
+            const targetDesc = this.parseTargets(s.class);
+            const nameWithClass = `${s.name} (${s.class.name})`;
+            return `| ${nameWithClass} | ${s.cost} | ${s.hp} | ${s.maxSpeed} | ${s.attackRange} | ${f(s.damage)} | ${f(s.reloadTime)}${s.reloadTime ? 's' : ''} | ${f(s.bulletSpeed)} | ${targetDesc} | ${s.desc} |`;
+        }).join('\n');
+        return `
+# 戰場指揮官系統指令集
+你現在是戰場指揮系統 AI。每${this.reportInterval}秒，你會收到來自前線分析員發送的JSON格式戰況。你需要分析戰局，部署單位並下達指令，最終摧毀敵方要塞。
+
+## 1. 環境參數
+- 戰場尺寸: ${CONFIG.worldWidth} x ${CONFIG.worldHeight}。
+- 陣營: 你指揮 [${this.side.toUpperCase()}] 陣營。
+- 要塞坐標: 藍方要塞 (0, ${CONFIG.worldHeight / 2}), 紅方要塞 (${CONFIG.worldWidth}, ${CONFIG.worldHeight / 2})。
+- 要塞屬性: HP ${CONFIG.maxHp}, 最大行動值(AP) ${CONFIG.maxAp}, AP 恢復速率: ${CONFIG.apRegenPerSecond} AP/sec。
+
+## 2. 兵種數據手冊
+| 兵種 | AP | HP | 移速 | 射程 | 傷害 | 裝填時間 | 子彈速度 | 攻擊目標 | 兵種描述 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+${tableRows}
+
+## 3. 單位 AI 行為邏輯 (優先級從高到低)
+單位在每一時刻僅執行一個最高優先級的行為。下達新指令會立即中斷並清除當前正在執行的低優先級指令。
+
+1. **手動移動 (Move Order)**: 
+   - 當收到坐標指令時，單位全力向目標點移動。
+   - **互斥性**: 進入移動狀態會立即清除“鎖定目標”和“跟隨”狀態。
+   - **停止**: 到達目標點附近後進入“待機(Idle)”狀態。
+2. **強制鎖定 (Lock-on/Cmd Target)**:
+   - 單位會持續追逐指定 ID 的敵軍，直至進入射程並開火或自爆。
+   - **持久性**: 除非目標死亡或不可見、或單位收到新指令，否則單位將持續追逐目標。
+   - **載具特性**: 擁有砲管的單位在開火前，砲塔需要一定的旋轉瞄準時間。若目標移動過快，可能導致無法精確射擊。
+3. **戰術跟隨 (Follow)**:
+   - 單位與友方領頭保持安全距離並同步移動。
+   - **協同攻擊**: 跟隨者會嘗試攻擊“領頭單位”正在攻擊的目標。若目標不在射程內，跟隨者不會獨自衝鋒，而是優先保持隊形。
+4. **自動掃描 (Auto Scan/Idle)**:
+   - 若無任何指令，某些單位會自動掃描射程內的敵軍並攻擊。
+
+## 4. 指令輸出規範 (JSON Actions)
+你必須輸出一個包含 "thoughts" 字符串與 "actions" 數組的 JSON 作為指令。"thoughts" 用來描述你目前的戰術考量、"actions" 用來存放你下達的所有指示。
+
+### 指令類型：
+1. **DEPLOY (部署)**: { "cmd": "DEPLOY", "type": "兵種typename", "target": 目標 }
+2. **ORDER (集結/重定向)**: { "cmd": "ORDER", "id": 單位ID, "target": 目標 }
+
+## 5.目標 (target) 類型說明:
+- 座標: { "x": number, "y": number }
+- 要塞: "FORTRESS_blue" 或 "FORTRESS_red"
+- 單位: 直接填寫數字 ID
+
+### A. 當目標是「坐標 {x, y}」時：
+1. **進攻**: 如果坐標落在「敵方要塞」範圍內，單位將進入進攻要塞的狀態。
+2. **移動**: 如果坐標是空地，單位將前往該點，到達後進入待機模式。
+3. **檢查**: 禁止鎖定己方要塞坐標。
+
+### B. 當目標是「單位 ID (數字)」時：
+1. **跟隨 (FOLLOW)**: 如果 ID 是「友軍」，單位將保持距離並跟隨該友軍。
+2. **進攻 (ATTACK)**: 如果 ID 是「敵軍」，單位將持續追擊該敵軍直至進入射程或自爆。
+3. **檢查**: 如果該兵種無法攻擊目標類型（見手冊），指令將被攔截。
+
+### 目標 (target) 範例：
+- 坐標: \`{ "x": 100, "y": 200 }\`
+- 敵方要塞 (快捷方式): \`"FORTRESS_blue"\` 或 \`"FORTRESS_red"\`
+- 特定單位: \`105\` (直接填寫數字 ID)
+
+## 6. 數據條目定義
+在前線分析員發送的 JSON 數據中：
+- allies/enemies: 友軍與敵軍列表。你只能取得少量有關敵軍單位的信息。
+- hasMoveOrder: 為 true 時，表示單位正無視敵襲前往目的地。
+- targetPos: 移動指令的目標座標。僅當 hasMoveOrder 為真時有意義。
+- cmdTargetId: 指揮官（你）下達的強制攻擊/跟隨目標 ID。
+- autoTargetId: 單位 AI 自動掃描並鎖定的目標 ID。
+- followTargetId: 單位正在跟隨的隊友 ID。
+- ID 說明: 'FORTRESS_blue/red' 代表要塞，數字代表具體戰術單位。
+`;
+    }
+    getTargetId(target) {
+        if (!target) return null;
+        if (target instanceof Fortress) return `FORTRESS_${target.side}`;
+        else if (target instanceof BaseUnit) return target.unitId;
+        return null;
+    }
+    getSummary(units, blueFort, redFort) {
+        const side = this.side;
+        const summary = {
+            timestamp: Date.now(),
+            fortress: {
+                hp: side === 'blue' ? blueFort.hp : redFort.hp,
+                ap: side === 'blue' ? blueFort.ap : redFort.ap
+            },
+            techStatus: {
+                availableTypes: Object.keys(CONFIG.UNIT_STATS), // 目前全部開放，未來可根據解鎖邏輯過濾
+                lockedTypes: [] // 預留給未來研究院機制
+            },
+            allies: [],           // 全发，否则 LLM 以后会遗忘自己的单位
+            enemies: [],          // 目前全发，以后可只发送可见的敌方单位以及位于自身单位攻击范围内的敌方单位
+            historys: [],         // 记录过去 4 轮的指令，以及战术日志
+            events: [],           // 记录过去 4 轮内发生的事件，如友方士兵/建筑受击/死亡原因
+            memory: [],           // 持久化记录一定数量的 AI 认为十分重要的 event（核心记忆）
+            suggestions: [],      // 上次行动对本轮行动所提出的建议，本轮行动根据局势来选择是否遵循建议
+            avgResponseTime: 0.0, // LLM 的平均响应时间，计算从发送出去到最终执行的平均时间，用于为 LLM 提前出牌
+        };
+        // todo: 轮式单位，提供 angle 和 vel，无人机提供 vx 和 vy
+        units.forEach(u => {
+            if (!u.alive) return;
+
+            const physics = {};
+            if (u.vx !== undefined && u.vy !== undefined) {
+                physics.vx = Number(u.vx.toFixed(2));
+                physics.vy = Number(u.vy.toFixed(2));
+            } else if (u.vel !== undefined) {
+                physics.vel = Number(u.vel.toFixed(2));
+                physics.angle = Number(u.angle.toFixed(2));
+            }
+
+            const unitData = {
+                id: u.unitId,
+                type: u.constructor.name,
+                x: Math.floor(u.x),
+                y: Math.floor(u.y),
+                ...physics // 添加物理数据
+            };
+
+            if (u.side === side) {
+                // 友軍額外信息
+                Object.assign(unitData, {
+                    hp: Math.floor(u.hp),
+                    hasMoveOrder: u.hasMoveOrder,
+                    targetPos: u.hasMoveOrder ? { x: Math.floor(u.targetX), y: Math.floor(u.targetY) } : null,
+                    cmdTargetId: this.getTargetId(u.cmdTarget),
+                    autoTargetId: this.getTargetId(u.autoTarget),
+                    followTargetId: this.getTargetId(u.followTarget)
+                });
+            }
+
+            summary.enemies.push(unitData);
+        });
+        return summary;
+    }
+    update(dt, units, blueFort, redFort) {
+        this.timer += dt;
+        if (this.timer < this.reportInterval) return;
+        this.timer = 0;
+        this.sendToLLM(this.getSummary(units, blueFort, redFort));
+    }
+    sendToLLM(data) {
+        // todo: 未来替换为 API 调用
+        console.log("=== 戰場局勢總結 ===");
+        console.log(this.getGameRules());
+        console.log(JSON.stringify(data, null, 2));
+        uiManager.add("戰術數據同步中...", "#00f2ff");
+    }
+}
+
 const CONFIG = {
-    width: 1200,       // 视口宽度
-    height: 800,       // 视口高度
-    worldWidth: 6000,  // 战场宽度
-    worldHeight: 4000, // 战场宽度
+    width: 1200,        // 视口宽度
+    height: 800,        // 视口高度
+    worldWidth: 6000,   // 战场宽度
+    worldHeight: 4000,  // 战场宽度
     maxHp: 10000,
     maxAp: 300,
-    apRegenPerSecond: 50,
+    apRegenPerSecond: 10,
     fortressSizes: [80, 50],
-    units: [
-        { id: 'sniper', name: '狙擊手', cost: 50, class: SniperUnit },
-        { id: 'drone', name: '無人機', cost: 30, class: DroneUnit },
-        { id: 'shotgun', name: '霰彈兵', cost: 45, class: ShotgunUnit }
-    ],
-    cardWidth: 140,
-    cardHeight: 50,
+
+    cardWidth: 140, cardHeight: 50,
+
+    TYPE_NAMES: {
+        'Fortress': '要塞',
+        'VehicleUnit': '載具',
+        'DroneUnit': '無人機',
+        'SniperUnit': '狙擊手',
+        'ShotgunUnit': '霰彈手',
+        'BaseUnit': '所有單位',
+    },
+    UNIT_STATS: {
+        sniper: {
+            class: SniperUnit, name: '狙擊手',
+            cost: 50, hp: 1000, maxSpeed: 50, attackRange: 500,
+            damage: 200, reloadTime: 2.0, bulletSpeed: 1200,
+            desc: '遠程火力單位，擅長後方狙擊要塞與重型單位。不會自動掃描。'
+        },
+        drone: {
+            class: DroneUnit, name: '無人機',
+            cost: 30, hp: 20, maxSpeed: 300, attackRange: 600,
+            damage: 600, reloadTime: null, bulletSpeed: null,
+            desc: '自殺式襲擊單位，觸碰目標即引爆。不會自動掃描。'
+        },
+        shotgun: {
+            class: ShotgunUnit, name: '霰彈兵',
+            cost: 40, hp: 250, maxSpeed: 160, attackRange: 250,
+            damage: 20, reloadTime: 1.0, bulletSpeed: 800,
+            desc: '近戰壓制單位，扇形發射 4 枚彈丸，無人機的剋星。會自動掃描。'
+        },
+    },
 };
+CONFIG.cards = Object.keys(CONFIG.UNIT_STATS).map(key => {
+    const stats = CONFIG.UNIT_STATS[key];
+    return { id: key, name: stats.name, cost: stats.cost, class: stats.class };
+});
 
 const camera = {
     // 视点
@@ -1565,12 +1846,10 @@ const camera = {
     y: CONFIG.worldHeight / 2,
     zoomPivotX: CONFIG.width / 2,  // 缩放锚点
     zoomPivotY: CONFIG.height / 2,
-    vx: 0,
-    vy: 0,
+    vx: 0, vy: 0,
     friction: 0.98,
     isDragging: false,
-    lastMouseX: 0,
-    lastMouseY: 0,
+    lastMouseX: 0, lastMouseY: 0,
 
     // 缩放
     zoom: 1,
@@ -1580,8 +1859,7 @@ const camera = {
     zoomFriction: 0.15, // 缩放平滑度，越小越平滑
 
     // 拖拽触发
-    startX: 0,
-    startY: 0,
+    startX: 0, startY: 0,
     dragThreshold: 5, // 移动超过 5 像素为拖拽
 
     update(dt) {
@@ -1589,50 +1867,31 @@ const camera = {
             const worldBefore = screenToWorld(this.zoomPivotX, this.zoomPivotY);
             this.zoom += (this.targetZoom - this.zoom) * this.zoomFriction;
             const worldAfter = screenToWorld(this.zoomPivotX, this.zoomPivotY);
-            this.x -= (worldAfter.x - worldBefore.x);
-            this.y -= (worldAfter.y - worldBefore.y);
+            this.x -= (worldAfter.x - worldBefore.x); this.y -= (worldAfter.y - worldBefore.y);
         } else {
             this.zoom = this.targetZoom;
         }
-
         if (!this.isDragging) {
-            if (Math.abs(this.vx) > 0.01) {
-                this.x += this.vx;
-                this.vx *= this.friction;
-            }
+            if (Math.abs(this.vx) > 0.01) { this.x += this.vx; this.vx *= this.friction; }
             else { this.vx = 0; }
-            if (Math.abs(this.vy) > 0.01) {
-                this.y += this.vy;
-                this.vy *= this.friction;
-            }
+            if (Math.abs(this.vy) > 0.01) { this.y += this.vy; this.vy *= this.friction; }
             else { this.vy = 0; }
         }
-
         this.clamp();
     },
-
     clamp() {
         const halfVisibleWidth = (CONFIG.width / 2) / this.zoom;
         const halfVisibleHeight = (CONFIG.height / 2) / this.zoom;
-        // 限制 X 轴
-        if (CONFIG.worldWidth < halfVisibleWidth * 2) {
-            this.x = CONFIG.worldWidth / 2;
-        } else {
-            this.x = Math.max(halfVisibleWidth, Math.min(CONFIG.worldWidth - halfVisibleWidth, this.x));
-        }
-        // 限制 Y 轴
-        if (CONFIG.worldHeight < halfVisibleHeight * 2) {
-            this.y = CONFIG.worldHeight / 2;
-        } else {
-            this.y = Math.max(halfVisibleHeight, Math.min(CONFIG.worldHeight - halfVisibleHeight, this.y));
-        }
+        // 限制 X 轴和 Y 轴
+        if (CONFIG.worldWidth < halfVisibleWidth * 2) this.x = CONFIG.worldWidth / 2;
+        else this.x = Math.max(halfVisibleWidth, Math.min(CONFIG.worldWidth - halfVisibleWidth, this.x));
+        if (CONFIG.worldHeight < halfVisibleHeight * 2) this.y = CONFIG.worldHeight / 2;
+        else this.y = Math.max(halfVisibleHeight, Math.min(CONFIG.worldHeight - halfVisibleHeight, this.y));
     }
 };
 
-// UI 配置
 const UI_CONFIG = {
-    msgX: 20,
-    msgY: 40,
+    msgX: 20, msgY: 40,
     msgSpacing: 35,
     charDelay: 30,      // 0.03s 逐字出现
     glowDuration: 200,  // 0.2s 荧光衰减
@@ -1640,41 +1899,34 @@ const UI_CONFIG = {
     fadeOutTime: 1000   // 1s 消息渐变消失
 };
 
-let units = [];
-let bullets = [];
-let particles = [];
-
+let units = []; let bullets = []; let particles = [];
 let lastTime = performance.now();
+let unitIdCounter = 0;
 
 const blueFortress = new Fortress('blue', 0, CONFIG.worldHeight / 2, '#3498db');
 const redFortress = new Fortress('red', CONFIG.worldWidth, CONFIG.worldHeight / 2, '#e74c3c');
 const uiManager = new NotificationManager();
+const reporter = new BattlefieldReporter('red');
 
 canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
 
     camera.isDragging = true;
-    camera.lastMouseX = mx;
-    camera.lastMouseY = my;
-    camera.startX = mx;
-    camera.startY = my;
+    camera.lastMouseX = mx; camera.lastMouseY = my;
+    camera.startX = mx; camera.startY = my;
 
-    camera.vx = 0;
-    camera.vy = 0;
+    camera.vx = 0; camera.vy = 0;
 });
 
 // 滚轮缩放
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
 
-    camera.zoomPivotX = mx;
-    camera.zoomPivotY = my;
+    camera.zoomPivotX = mx; camera.zoomPivotY = my;
 
     const zoomSpeed = 0.001;
     camera.targetZoom = Math.min(Math.max(camera.targetZoom + (-e.deltaY * zoomSpeed), camera.minZoom), camera.maxZoom);
@@ -1682,20 +1934,17 @@ canvas.addEventListener('wheel', (e) => {
 
 window.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
 
     if (camera.isDragging) {
         const dx = (mx - camera.lastMouseX) / camera.zoom;
         const dy = (my - camera.lastMouseY) / camera.zoom;
 
-        camera.x -= dx;
-        camera.y -= dy;
+        camera.x -= dx; camera.y -= dy;
 
         camera.vx = (camera.vx * 0.5) - (dx * 0.5); // 加权平均
         camera.vy = (camera.vy * 0.5) - (dy * 0.5);
-        camera.lastMouseX = mx;
-        camera.lastMouseY = my;
+        camera.lastMouseX = mx; camera.lastMouseY = my;
         camera.clamp();
     }
 });
@@ -1705,22 +1954,19 @@ window.addEventListener('mouseup', (e) => {
     camera.isDragging = false;
 
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
 
     const dist = Math.hypot(mx - camera.startX, my - camera.startY);
     if (dist < camera.dragThreshold) {
         blueFortress.handleInput(mx, my, 'click', redFortress);
-        camera.vx = 0;
-        camera.vy = 0;
+        camera.vx = 0; camera.vy = 0;
     }
 });
 
 canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
 
     blueFortress.handleInput(mx, my, 'rightclick', redFortress);
 });
@@ -1730,24 +1976,23 @@ function screenToWorld(sx, sy) {
     const y = (sy - CONFIG.height / 2) / camera.zoom + camera.y;
     return { x, y };
 }
+function worldToScreen(wx, wy) {
+    const sx = (wx - camera.x) * camera.zoom + CONFIG.width / 2;
+    const sy = (wy - camera.y) * camera.zoom + CONFIG.height / 2;
+    return { x: sx, y: sy };
+}
 function drawGrid(ctx) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, CONFIG.worldWidth, CONFIG.worldHeight);
     ctx.beginPath();
-    for (let x = 0; x <= CONFIG.worldWidth; x += 100) {
-        ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.worldHeight);
-    }
-    for (let y = 0; y <= CONFIG.worldHeight; y += 100) {
-        ctx.moveTo(0, y); ctx.lineTo(CONFIG.worldWidth, y);
-    }
+    for (let x = 0; x <= CONFIG.worldWidth; x += 100) { ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.worldHeight); }
+    for (let y = 0; y <= CONFIG.worldHeight; y += 100) { ctx.moveTo(0, y); ctx.lineTo(CONFIG.worldWidth, y); }
     ctx.stroke();
     ctx.restore();
 }
 function gameLoop(now) {
-    const dt = (now - lastTime) / 1000;
-    lastTime = now;
+    const dt = (now - lastTime) / 1000; lastTime = now;
 
     camera.update(dt);
 
@@ -1762,39 +2007,25 @@ function gameLoop(now) {
     ctx.translate(-camera.x, -camera.y);
     drawGrid(ctx);
 
-    blueFortress.update(dt);
-    redFortress.update(dt);
-    redFortress.think(dt);
+    blueFortress.update(dt); redFortress.update(dt);
 
     units = units.filter(u => u.alive || particles.length > 0);
     bullets = bullets.filter(b => b.alive);
     particles = particles.filter(p => p.life > 0);
 
-    units.filter(u => u.domain === 'GROUND').forEach(u => {
-        u.update(dt);
-        u.draw(ctx);
-    });
-
-    blueFortress.drawBase(ctx);
-    redFortress.drawBase(ctx);
-
-    bullets.forEach(b => {
-        b.update(dt, units, blueFortress, redFortress, particles);
-        b.draw(ctx);
-    });
+    units.filter(u => u.domain === 'GROUND').forEach(u => { u.update(dt); u.draw(ctx); });
+    bullets.forEach(b => { b.update(dt, units, blueFortress, redFortress, particles); b.draw(ctx); });
     particles.forEach(p => { p.update(dt); p.draw(ctx); });
-
-    units.filter(u => u.domain === 'AIR').forEach(u => {
-        u.update(dt);
-        u.draw(ctx);
-    });
+    blueFortress.drawBase(ctx); redFortress.drawBase(ctx);
+    units.filter(u => u.domain === 'AIR').forEach(u => { u.update(dt); u.draw(ctx); });
 
     ctx.restore();
+
+    reporter.update(dt, units, blueFortress, redFortress);
 
     blueFortress.drawOverlay(ctx);
     uiManager.draw(ctx);
 
     requestAnimationFrame(gameLoop);
 }
-
 requestAnimationFrame(gameLoop);
