@@ -211,7 +211,7 @@ ${tableRows}
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer sk-f0c2d5d54bfc471b8fa255fc9d94a63c`
+                    'Authorization': `Bearer sk-?`
                 },
                 body: JSON.stringify({
                     model: "deepseek-chat",
