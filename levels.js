@@ -2,9 +2,9 @@
 const LEVEL_DATA = {
     1: {
         name: "邊境衝突",
-        description: "使用無人機逐一擊破敵方霰彈手，最後使用狙擊手摧毀敵方要塞",
+        description: "使用狙擊手逐一擊破敵方單位，最後摧毀敵方要塞",
         initAp: 50,
-        availableUnits: ['sniper', 'drone'],
+        availableUnits: ['sniper'],
         blueUnits: [],
         redUnits: [
             { type: 'sniper', x: 15, y: 5, angle: 140 },

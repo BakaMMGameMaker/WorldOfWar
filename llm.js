@@ -368,19 +368,28 @@ class Fortress {
     }
 
     applyTargetToUnit(unit, task, finalTarget) {
-        unit.resetState();
         switch (task) {
             case 'MOVE':
-                unit.targetPos = { x: finalTarget.x, y: finalTarget.y };
-                return `移至坐標 (${Math.floor(unit.targetPos.x)}, ${Math.floor(unit.targetPos.y)})`;
+                unit.issueOrder({
+                    type: BaseUnit.ORDER_TYPE.MOVE,
+                    targetPos: { x: finalTarget.x, y: finalTarget.y }
+                }, 'llm move order');
+                return `移至坐標 (${Math.floor(finalTarget.x)}, ${Math.floor(finalTarget.y)})`;
             case 'ATTACK':
-                unit.cmdTarget = finalTarget;
+                unit.issueOrder({
+                    type: BaseUnit.ORDER_TYPE.ATTACK,
+                    target: finalTarget
+                }, 'llm attack order');
                 const name = (finalTarget instanceof Fortress) ? '敵軍要塞' : `敵方單位 ${finalTarget.unitId}`;
                 return `正在進攻 ${name}`;
             case 'FOLLOW':
-                unit.followTarget = finalTarget;
+                unit.issueOrder({
+                    type: BaseUnit.ORDER_TYPE.FOLLOW,
+                    target: finalTarget
+                }, 'llm follow order');
                 return `跟隨友方單位 ${finalTarget.unitId}`;
             default:
+                unit.clearOrder('llm idle order');
                 return '進入待機模式';
         }
     }

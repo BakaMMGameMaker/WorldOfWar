@@ -2,6 +2,7 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+const DOMAIN = { GROUND: 'GROUND', AIR: 'AIR' };
 const BT_STATUS = { SUCCESS: 'SUCCESS', FAILURE: 'FAILURE', RUNNING: 'RUNNING' };
 const GAME_STATE = { MENU: 'MENU', PLAYING: 'PLAYING', VICTORY: 'VICTORY', DEFEAT: 'DEFEAT' };
 
@@ -306,9 +307,13 @@ class Fortress extends Actor {
                 let u = new this.selectedUnitData.class(this);
                 units.push(u);
 
-                if (deployingTarget) u.cmdTarget = deployingTarget;
-                else if (followTarget) u.followTarget = followTarget;
-                else u.targetPos = { x: wx, y: wy };
+                if (deployingTarget) {
+                    u.issueOrder({ type: BaseUnit.ORDER_TYPE.ATTACK, target: deployingTarget }, 'deploy attack order');
+                } else if (followTarget) {
+                    u.issueOrder({ type: BaseUnit.ORDER_TYPE.FOLLOW, target: followTarget }, 'deploy follow order');
+                } else {
+                    u.issueOrder({ type: BaseUnit.ORDER_TYPE.MOVE, targetPos: { x: wx, y: wy } }, 'deploy move order');
+                }
 
                 uiManager.add(`${this.selectedUnitData.name} 已投入戰場`, this.colorTheme);
                 this.switchState(Fortress.FORT_STATE.NORMAL);
@@ -336,9 +341,7 @@ class Fortress extends Actor {
                         if (clickedUnit.followTarget === this.selectedUnit) {
                             uiManager.add('禁止循環跟隨', '#ff4444');
                         } else {
-                            this.selectedUnit.resetState();
-                            this.selectedUnit.followTarget = clickedUnit;
-                            this.selectedUnit.switchState(BaseUnit.UNIT_STATE.FOLLOWING);
+                            this.selectedUnit.issueOrder({ type: BaseUnit.ORDER_TYPE.FOLLOW, target: clickedUnit }, 'fortress follow order');
                             uiManager.add(`已跟隨指定單位`, this.colorTheme);
                         }
                         this.switchState(Fortress.FORT_STATE.NORMAL);
@@ -351,7 +354,7 @@ class Fortress extends Actor {
                     }
                     cmdTarget = clickedUnit;
                 }
-                // 要塞目标
+                // 点了要塞
                 for (let f of allForts) {
                     if (!f.inRange(wx, wy)) continue;
                     if (f.side === this.side) {
@@ -367,14 +370,11 @@ class Fortress extends Actor {
                     break;
                 }
                 // 攻击敌方单位或移动
-                this.selectedUnit.resetState();
                 if (cmdTarget) {
-                    this.selectedUnit.cmdTarget = cmdTarget;
-                    this.selectedUnit.switchState(BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET);
+                    this.selectedUnit.issueOrder({ type: BaseUnit.ORDER_TYPE.ATTACK, target: cmdTarget }, 'fortress attack order');
                     uiManager.add(`已鎖定目標`, this.colorTheme);
                 } else {
-                    this.selectedUnit.targetPos = { x: wx, y: wy };
-                    this.selectedUnit.switchState(BaseUnit.UNIT_STATE.MOVING_TO_POS);
+                    this.selectedUnit.issueOrder({ type: BaseUnit.ORDER_TYPE.MOVE, targetPos: { x: wx, y: wy } }, 'fortress move order');
                     uiManager.add(`移動至 ${Math.floor(wx)}, ${Math.floor(wy)}`, this.colorTheme);
                 }
                 this.switchState(Fortress.FORT_STATE.NORMAL);
@@ -512,7 +512,7 @@ class Bullet {
         this.alive = true;
     }
 
-    update(dt, allUnits, blueFort, redFort, particles) {
+    update(dt) {
         if (!this.alive) return;
 
         // 超出射程或触碰边界
@@ -528,14 +528,14 @@ class Bullet {
         this.x += this.vx * dt; this.y += this.vy * dt;
 
         // 碰撞检测
-        for (let u of allUnits) {
+        for (let u of units) {
             if (u.side === this.owner.side || !u.alive || !this.owner.canAttack(u)) continue;
             if (Math.hypot(this.x - u.x, this.y - u.y) > 25) continue;
             u.takeDamage({ attacker: this.owner, damage: this.damage });
             this.onHit(particles);
             return;
         }
-        const targetFort = this.owner.side === 'blue' ? redFort : blueFort;
+        const targetFort = this.owner.side === 'blue' ? redFortress : blueFortress;
         if (!this.owner.canAttack(targetFort) || Math.hypot(this.x - targetFort.x, this.y - targetFort.y) > CONFIG.fortressSizes[0]) return;
         targetFort.takeDamage({ attacker: this.owner, damage: this.damage });
         this.onHit(particles);
@@ -568,6 +568,8 @@ class Bullet {
 
 class BaseUnit extends Actor {
     static UNIT_STATE = { DEPLOYING: 'DEPLOYING', MOVING_TO_POS: 'MOVING_TO_POS', APPROACHING_CMD_TARGET: 'APPROCHING_CMD_TARGET', FOLLOWING: 'FOLLOWING', IDLE: 'IDLE' };
+    static ORDER_TYPE = { NONE: 'NONE', MOVE: 'MOVE', ATTACK: 'ATTACK', FOLLOW: 'FOLLOW' };
+    static _autoCombatTree = null;
 
     static canClassAttack(unitCls, target) {
         if (!target || !target.alive) return false;
@@ -575,9 +577,22 @@ class BaseUnit extends Actor {
         return allowed.some(cls => target instanceof cls);
     }
 
-    constructor(owner) {
+    canAttack(target) { return BaseUnit.canClassAttack(this.constructor, target); }
+
+    static getAutoCombatTree() {
+        if (!BaseUnit._autoCombatTree) {
+            BaseUnit._autoCombatTree = new Sequence([
+                new Action(ctx => BaseUnit.AI.acquireAutoTarget(ctx)),
+                new Action(ctx => BaseUnit.AI.engageAutoTarget(ctx)),
+            ]);
+        }
+        return BaseUnit._autoCombatTree;
+    }
+
+    constructor(owner, typeKey) {
         // 基本信息
         super(owner.x, owner.y, owner.side, unitIdCounter++);
+        this.loadStats(CONFIG.UNIT_STATS[typeKey]);
         this.owner = owner;
         this.alive = true;
 
@@ -587,6 +602,7 @@ class BaseUnit extends Actor {
 
         // 行为状态
         this.navTarget = null;
+        this.currentOrder = this.createEmptyOrder();
         this.targetPos = null;
         this.cmdTarget = null;    // 要塞指定的敌方单位
         this.autoTarget = null;   // 自动扫描发现的敌军
@@ -605,19 +621,123 @@ class BaseUnit extends Actor {
     }
 
     loadStats(stats) {
-        this.cost = stats.cost;
-        this.maxHp = this.hp = stats.hp;
-        this.attackRange = stats.attackRange;
-        this.reloadTime = stats.reloadTime * 1000;
-        this.unitMaxSpeed = stats.maxSpeed;
-        this.bulletSpeed = stats.bulletSpeed;
-        this.damage = stats.damage;
-        this.priorityMap = stats.priorityMap;
+        const { class: cls, ...data } = stats;
+        Object.assign(this, data);
+        this.maxHp = data.hp;
     }
 
-    switchState(newState) {
+    createEmptyOrder() {
+        return { type: BaseUnit.ORDER_TYPE.NONE, target: null, targetPos: null };
+    }
+
+    normalizeOrder(order) {
+        if (!order || !order.type || order.type === BaseUnit.ORDER_TYPE.NONE) return this.createEmptyOrder();
+        switch (order.type) {
+            case BaseUnit.ORDER_TYPE.MOVE:
+                if (!order.targetPos) return this.createEmptyOrder();
+                return {
+                    type: BaseUnit.ORDER_TYPE.MOVE,
+                    target: null,
+                    targetPos: { x: order.targetPos.x, y: order.targetPos.y }
+                };
+            case BaseUnit.ORDER_TYPE.ATTACK:
+            case BaseUnit.ORDER_TYPE.FOLLOW:
+                if (!order.target || !order.target.alive) return this.createEmptyOrder();
+                return {
+                    type: order.type,
+                    target: order.target,
+                    targetPos: null
+                };
+            default:
+                return this.createEmptyOrder();
+        }
+    }
+
+    syncLegacyOrderFields() {
+        const order = this.currentOrder;
+        this.targetPos = (order.type === BaseUnit.ORDER_TYPE.MOVE && order.targetPos)
+            ? { x: order.targetPos.x, y: order.targetPos.y }
+            : null;
+        this.cmdTarget = order.type === BaseUnit.ORDER_TYPE.ATTACK ? order.target : null;
+        this.followTarget = order.type === BaseUnit.ORDER_TYPE.FOLLOW ? order.target : null;
+    }
+
+    resolveStateForOrder(order = this.currentOrder) {
+        switch (order.type) {
+            case BaseUnit.ORDER_TYPE.MOVE: return BaseUnit.UNIT_STATE.MOVING_TO_POS;
+            case BaseUnit.ORDER_TYPE.ATTACK: return BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET;
+            case BaseUnit.ORDER_TYPE.FOLLOW: return BaseUnit.UNIT_STATE.FOLLOWING;
+            default: return BaseUnit.UNIT_STATE.IDLE;
+        }
+    }
+
+    getMoveOrderPos() {
+        return this.currentOrder.type === BaseUnit.ORDER_TYPE.MOVE ? this.currentOrder.targetPos : null;
+    }
+
+    getAttackOrderTarget() {
+        return this.currentOrder.type === BaseUnit.ORDER_TYPE.ATTACK ? this.currentOrder.target : null;
+    }
+
+    getFollowOrderTarget() {
+        return this.currentOrder.type === BaseUnit.ORDER_TYPE.FOLLOW ? this.currentOrder.target : null;
+    }
+
+    isCurrentOrderValid() {
+        switch (this.currentOrder.type) {
+            case BaseUnit.ORDER_TYPE.MOVE:
+                return !!this.currentOrder.targetPos;
+            case BaseUnit.ORDER_TYPE.ATTACK:
+            case BaseUnit.ORDER_TYPE.FOLLOW:
+                return !!(this.currentOrder.target && this.currentOrder.target.alive);
+            default:
+                return true;
+        }
+    }
+
+    transitionTo(newState, reason = '') {
         if (this.state === newState) return;
         this.state = newState;
+    }
+
+    switchState(newState, reason = 'legacy switchState') {
+        this.transitionTo(newState, reason);
+    }
+
+    issueOrder(order, reason = 'issue order') {
+        this.navTarget = null;
+        this.autoTarget = null;
+        this.currentOrder = this.normalizeOrder(order);
+        this.syncLegacyOrderFields();
+
+        if (this.state !== BaseUnit.UNIT_STATE.DEPLOYING) {
+            this.transitionTo(this.resolveStateForOrder(), reason);
+        }
+    }
+
+    clearOrder(reason = 'clear order') {
+        this.navTarget = null;
+        this.autoTarget = null;
+        this.currentOrder = this.createEmptyOrder();
+        this.syncLegacyOrderFields();
+
+        if (this.state !== BaseUnit.UNIT_STATE.DEPLOYING) {
+            this.transitionTo(BaseUnit.UNIT_STATE.IDLE, reason);
+        }
+    }
+
+    refreshStateFromOrder(reason = 'sync order state') {
+        if (this.state === BaseUnit.UNIT_STATE.DEPLOYING) return;
+        if (!this.isCurrentOrderValid()) {
+            if (this.currentOrder.type !== BaseUnit.ORDER_TYPE.NONE) this.clearOrder(reason);
+            return;
+        }
+        this.transitionTo(this.resolveStateForOrder(), reason);
+    }
+
+    // 自动状态切换
+    autoStateTransition() {
+        this.refreshStateFromOrder('auto state transition');
     }
 
     doDeploy(dt) {
@@ -629,10 +749,7 @@ class BaseUnit extends Actor {
         if (!passedExit) {
             this.move(dt, this.side === 'blue' ? CONFIG.worldWidth : 0, this.y);
         } else {
-            if (this.targetPos) this.switchState(BaseUnit.UNIT_STATE.MOVING_TO_POS);
-            else if (this.cmdTarget) this.switchState(BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET);
-            else if (this.followTargett) this.switchState(BaseUnit.UNIT_STATE.FOLLOWING);
-            else this.switchState(BaseUnit.UNIT_STATE.IDLE);
+            this.transitionTo(this.resolveStateForOrder(), 'deploy complete');
         }
     }
 
@@ -685,19 +802,20 @@ class BaseUnit extends Actor {
     }
 
     moveToPos(dt) {
-        if (!this.targetPos) { this.switchState(BaseUnit.UNIT_STATE.IDLE); return; }
-        const { x: tx, y: ty } = this.targetPos;
+        const targetPos = this.getMoveOrderPos();
+        if (!targetPos) { this.clearOrder('move target lost'); return; }
+        const { x: tx, y: ty } = targetPos;
         const dist = Math.hypot(tx - this.x, ty - this.y);
-        if (dist < 15 && this.vel < 5) { this.resetState(); return; }
-        this.navTarget = this.targetPos;
+        if (dist < 15 && this.vel < 5) { this.clearOrder('move complete'); return; }
+        this.navTarget = targetPos;
         const targetAngle = Math.atan2(ty - this.y, tx - this.x);
         this.move(dt, tx, ty, 10);
         this.rotate(dt, targetAngle);
     }
 
     followLeader(dt) {
-        const leader = this.followTarget;
-        if (!leader || !leader.alive) { this.resetState(); return; }
+        const leader = this.getFollowOrderTarget();
+        if (!leader || !leader.alive) { this.clearOrder('follow target lost'); return; }
 
         const distToLeader = Math.hypot(leader.x - this.x, leader.y - this.y);
         const stopDist = this.collisionRadius + leader.collisionRadius + 20;
@@ -709,10 +827,8 @@ class BaseUnit extends Actor {
         } else {
             this.rotate(dt, leader.angle);
         }
-        this.tryAttackAutoTarget(dt);
+        this.runAutoCombatBT(dt);
     }
-
-    canAttack(target) { return BaseUnit.canClassAttack(this.constructor, target); }
 
     updateTimers(dt) {
         if (this.reloadFlashTimer > dt) this.reloadFlashTimer -= dt;
@@ -726,8 +842,69 @@ class BaseUnit extends Actor {
         this.updateTimers(dt);
     }
 
+    runStateMachine(dt) {
+        switch (this.state) {
+            case BaseUnit.UNIT_STATE.DEPLOYING: this.tickDeploy(dt); break;
+            case BaseUnit.UNIT_STATE.MOVING_TO_POS: this.tickMoveOrder(dt); break;
+            case BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET: this.tickAttackOrder(dt); break;
+            case BaseUnit.UNIT_STATE.FOLLOWING: this.tickFollowOrder(dt); break;
+            case BaseUnit.UNIT_STATE.IDLE: this.tickIdle(dt); break;
+        }
+    }
+
+    tickDeploy(dt) {
+        this.doDeploy(dt);
+    }
+
+    shouldAutoEngageWhileMoving() {
+        return false;
+    }
+
+    tickMoveOrder(dt) {
+        this.moveToPos(dt);
+        if (this.state !== BaseUnit.UNIT_STATE.MOVING_TO_POS) return;
+        if (this.shouldAutoEngageWhileMoving()) this.runAutoCombatBT(dt);
+    }
+
+    tickAttackOrder(dt) {
+        const target = this.getAttackOrderTarget();
+        if (!target || !target.alive) {
+            this.clearOrder('attack target lost');
+            return;
+        }
+        this.executeAttackOrder(dt, target);
+    }
+
+    executeAttackOrder(dt, target) {
+        return;
+    }
+
+    tickFollowOrder(dt) {
+        this.followLeader(dt);
+    }
+
+    tickIdle(dt) {
+        this.refreshStateFromOrder('idle sync');
+    }
+
+    runAutoCombatBT(dt) {
+        return BaseUnit.getAutoCombatTree().tick({ unit: this, dt });
+    }
+
+    tryAttackAutoTarget(dt) {
+        return this.runAutoCombatBT(dt);
+    }
+
+    engageAutoTarget(dt, target) {
+        return BT_STATUS.FAILURE;
+    }
+
     validatePriorityTarget() {
-        if (this.cmdTarget && this.cmdTarget.alive) return this.cmdTarget;
+        const issuedTarget = this.getAttackOrderTarget();
+        if (issuedTarget && issuedTarget.alive) {
+            this.cmdTarget = issuedTarget;
+            return issuedTarget;
+        }
         this.cmdTarget = null;
         if (this.autoTarget && this.autoTarget.alive) return this.autoTarget;
         this.autoTarget = null;
@@ -736,7 +913,9 @@ class BaseUnit extends Actor {
 
     scanForAutoTarget() {
         // 已经做好攻击 cmdtarget 的准备，重置 autotarget 且不再扫描
-        if (this.cmdTarget && this.cmdTarget.alive && Math.hypot(this.cmdTarget.x - this.x, this.cmdTarget.y - this.y) <= this.attackRange) { this.autoTarget = null; return; }
+        const commandTarget = this.getAttackOrderTarget();
+        this.cmdTarget = (commandTarget && commandTarget.alive) ? commandTarget : null;
+        if (this.cmdTarget && Math.hypot(this.cmdTarget.x - this.x, this.cmdTarget.y - this.y) <= this.attackRange) { this.autoTarget = null; return; }
         if (!this.isAutoScanEnabled || (this.autoTarget && this.autoTarget.alive)) return;
 
         const now = performance.now();
@@ -886,15 +1065,19 @@ class BaseUnit extends Actor {
         const wasAlive = this.alive;
         super.takeDamage(ctx);
 
-        if (wasAlive && !this.alive && ctx.attacker && ctx.attacker.side === 'blue') {
+        if (ctx.attacker.side === 'blue' && wasAlive && !this.alive && ctx.attacker) {
             const killerFort = ctx.attacker.owner;
             if (killerFort && killerFort !== this.owner && this.cost) {
                 killerFort.ap = Math.min(CONFIG.maxAp, killerFort.ap + this.cost);
                 uiManager.add(`戰術回收: +${this.cost} AP`, killerFort.colorTheme);
             }
         }
-        if (!this.alive) return;
-        if (this.hp / this.maxHp >= 0.3) this.hitFlashTimer = this.hitFlashDuration;
+        if (!this.alive) {
+            this.cleanupDestroyedState();
+            for (let i = 0; i < 20; i++) { particles.push(new Particle(this.x, this.y, this.colorTheme)); }
+        } else if (this.hp / this.maxHp >= 0.3) {
+            this.hitFlashTimer = this.hitFlashDuration;
+        }
     }
 
     checkWorldCollision() {
@@ -904,7 +1087,7 @@ class BaseUnit extends Actor {
         if (this.y - r < 0) this.y = r; if (this.y + r > CONFIG.worldHeight) this.y = CONFIG.worldHeight - r;
 
         // 要塞硬碰撞
-        if (this.state === BaseUnit.UNIT_STATE.DEPLOYING || this.domain != 'GROUND') return;
+        if (this.state === BaseUnit.UNIT_STATE.DEPLOYING || this.domain != DOMAIN.GROUND) return;
         const allFortresses = [blueFortress, redFortress];
         for (let f of allFortresses) {
             const dist = Math.hypot(this.x - f.x, this.y - f.y);
@@ -1024,76 +1207,42 @@ class BaseUnit extends Actor {
         ctx.restore();
     }
 
-    resetState() {
+    cleanupDestroyedState() {
         this.navTarget = null;
-        this.targetPos = null;
-        this.cmdTarget = null;
         this.autoTarget = null;
-        this.followTarget = null;
-        this.switchState(BaseUnit.UNIT_STATE.IDLE);
+        this.currentOrder = this.createEmptyOrder();
+        this.syncLegacyOrderFields();
+        this.isSelected = false;
+        this.state = null;
+    }
+
+    resetState() {
+        this.clearOrder('legacy resetState');
     }
 
     static AI = {
-        scanForAutoTarget: (ctx) => {
+        acquireAutoTarget: (ctx) => {
             const u = ctx.unit;
-            if (u.validatePriorityTarget()) return BT_STATUS.SUCCESS;
-
             if (!u.isAutoScanEnabled) {
                 u.autoTarget = null;
                 return BT_STATUS.FAILURE;
             }
-
-            const now = performance.now();
-            let bestTarget = null;
-            let bestScore = Infinity;
-
-            for (let target of units.concat(allForts)) {
-                if (target.side === u.side || !target.alive || !u.canAttack(target)) continue;
-                const dist = Math.hypot(target.x - u.x, target.y - u.y);
-                if (dist > u.attackRange) continue;
-
-                let score = 999; // 目标优先级
-
-                if (u.lastAttacker === target && (now - u.lastAttackerTime < 2000)) {
-                    score = 0; // 攻击者优先级最高
-                } else if (u.priorityMap) {
-                    const p = u.priorityMap.get(target.constructor);
-                    if (p !== undefined) {
-                        score = p;
-                    } else {
-                        for (let [cls, pValue] of u.priorityMap) {
-                            if (target instanceof cls) {
-                                score = pValue;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestTarget = target;
-                } else if (score === bestScore && bestTarget) {
-                    const distToBest = Math.hypot(bestTarget.x - u.x, bestTarget.y - u.y);
-                    if (dist < distToBest) bestTarget = target;
-                }
-            }
-            u.autoTarget = bestTarget; // 要不 null 要不实际单位
-            return bestTarget !== null ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE;
+            u.scanForAutoTarget();
+            return (u.autoTarget && u.autoTarget.alive) ? BT_STATUS.SUCCESS : BT_STATUS.FAILURE;
         },
-        fire: (ctx) => {
+        engageAutoTarget: (ctx) => {
             const u = ctx.unit;
-            if (!u.fire || !u.validatePriorityTarget()) return BT_STATUS.FAILURE;
-            u.fire();
-            return BT_STATUS.SUCCESS;
+            const target = u.autoTarget;
+            if (!target || !target.alive) return BT_STATUS.FAILURE;
+            return u.engageAutoTarget(ctx.dt, target);
         },
     }
 }
 
 class VehicleUnit extends BaseUnit {
-    constructor(owner) {
-        super(owner);
-        this.domain = 'GROUND';
-        this.state = BaseUnit.UNIT_STATE.DEPLOYING;
+    constructor(owner, typeKey) {
+        super(owner, typeKey);
+        this.domain = DOMAIN.GROUND;
 
         this.turretAngVel = 0;
         this.turretAngle = this.angle;
@@ -1103,56 +1252,52 @@ class VehicleUnit extends BaseUnit {
     }
 
     update(dt) {
-        if (!this.alive) return; // 检测存活
         super.update(dt);
+        if (!this.alive) return; // 检测存活
         // 检测挤压和碰撞
         this.applySeparation(dt, units);
         this.checkWorldCollision();
         this.updateRecoil();
-
-        switch (this.state) {
-            case BaseUnit.UNIT_STATE.DEPLOYING: { this.doDeploy(dt); break; }
-            case BaseUnit.UNIT_STATE.MOVING_TO_POS: { this.moveToPos(dt); this.tryAttackAutoTarget(dt); break; }
-            case BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET:
-                {
-                    const target = this.cmdTarget;
-                    if (!target || !target.alive) { this.resetState(); return; }
-                    const dist = Math.hypot(target.x - this.x, target.y - this.y);
-                    if (dist <= this.attackRange) {
-                        this.navTarget = null;
-                        this.move(dt, this.x, this.y);
-                        this.rotate(dt, this.angle);
-                        if (this.aimAtTarget(dt, target)) this.fire();
-                        break;
-                    }
-                    this.navTarget = { x: target.x, y: target.y };
-                    const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
-                    this.move(dt, target.x, target.y, this.attackRange * 0.9);
-                    this.rotate(dt, targetAngle);
-                    if (!this.autoTarget) this.aimAtTarget(dt, target);
-                    this.tryAttackAutoTarget(dt);
-                    break;
-                }
-            case BaseUnit.UNIT_STATE.FOLLOWING: { this.followLeader(dt); break; }
-            case BaseUnit.UNIT_STATE.IDLE:
-                {
-                    // 缓动
-                    this.move(dt, this.x, this.y);
-                    this.rotate(dt, this.angle);
-                    // 巡逻
-                    this.tryAttackAutoTarget(dt);
-                    if (!this.autoTarget || !this.autoTarget.alive) this.rotateTurret(dt, this.turretAngle);
-                    break;
-                }
-        }
+        this.runStateMachine(dt);
     }
 
-    tryAttackAutoTarget(dt) {
-        this.scanForAutoTarget();
-        const target = this.autoTarget;
-        if (!target || !target.alive) return;
+    shouldAutoEngageWhileMoving() {
+        return true;
+    }
+
+    executeAttackOrder(dt, target) {
         const dist = Math.hypot(target.x - this.x, target.y - this.y);
-        if (dist <= this.attackRange && this.aimAtTarget(dt, target)) this.fire();
+        if (dist <= this.attackRange) {
+            this.navTarget = null;
+            this.move(dt, this.x, this.y);
+            this.rotate(dt, this.angle);
+            if (this.aimAtTarget(dt, target)) this.fire();
+            return;
+        }
+        this.navTarget = { x: target.x, y: target.y };
+        const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
+        this.move(dt, target.x, target.y, this.attackRange * 0.9);
+        this.rotate(dt, targetAngle);
+        if (!this.autoTarget) this.aimAtTarget(dt, target);
+        this.runAutoCombatBT(dt);
+    }
+
+    tickIdle(dt) {
+        this.move(dt, this.x, this.y);
+        this.rotate(dt, this.angle);
+        const autoCombatStatus = this.runAutoCombatBT(dt);
+        if (autoCombatStatus === BT_STATUS.FAILURE) this.rotateTurret(dt, this.turretAngle);
+        this.refreshStateFromOrder('vehicle idle sync');
+    }
+
+    engageAutoTarget(dt, target) {
+        const dist = Math.hypot(target.x - this.x, target.y - this.y);
+        if (dist > this.attackRange) return BT_STATUS.FAILURE;
+        if (this.aimAtTarget(dt, target)) {
+            this.fire();
+            return BT_STATUS.SUCCESS;
+        }
+        return BT_STATUS.RUNNING;
     }
 
     updateRecoil() {
@@ -1185,6 +1330,7 @@ class VehicleUnit extends BaseUnit {
             this.turretAngVel = 0;
         }
     }
+
     aimAtTarget(dt, target) {
         if (!target || !target.alive) return;
 
@@ -1192,6 +1338,7 @@ class VehicleUnit extends BaseUnit {
         this.rotateTurret(dt, angleToEnemy); // 旋转炮塔
 
         // 精度校验
+        // TODO: 加上地方运动实现提前枪
         const dist = Math.hypot(target.x - this.x, target.y - this.y); // 到目标的距离
         const angleDiff = Math.abs(this.getAngleDiff(angleToEnemy, this.turretAngle));
         const lateralError = dist * Math.sin(angleDiff); // 如果以当前角度发射，子弹离目标的距离
@@ -1202,16 +1349,8 @@ class VehicleUnit extends BaseUnit {
 
 // 狙击手
 class SniperUnit extends VehicleUnit {
-    static allowedTargets = [Fortress, VehicleUnit];
-
     constructor(owner) {
-        super(owner);
-        this.loadStats(CONFIG.UNIT_STATS.sniper);
-
-        this.unitAccel = 10;
-        this.unitAngMaxSpeed = 2; this.unitAngAccel = 0.5;
-        this.turretMaxSpeed = 3.0; this.turretAccel = 1;
-        this.collisionRadius = 40;
+        super(owner, 'sniper');
     }
 
     fire() {
@@ -1261,180 +1400,10 @@ class SniperUnit extends VehicleUnit {
     }
 }
 
-// 无人机
-class DroneUnit extends BaseUnit {
-    static allowedTargets = [Fortress, VehicleUnit];
-
-    constructor(owner) {
-        super(owner);
-        this.loadStats(CONFIG.UNIT_STATS.drone);
-
-        this.domain = 'AIR';
-        this.vx = 0; this.vy = 0;
-        this.unitAccel = 400;
-        this.unitAngMaxSpeed = 8;
-        this.unitAngAccel = 4;
-        this.turnSensitivity = 5.0; // 转向灵敏度
-        this.collisionRadius = 20;
-    }
-
-    move(dt, tx, ty, stopRadius = 0, smoothStop = true) {
-        const dx = tx - this.x; const dy = ty - this.y;
-        const dist = Math.hypot(dx, dy);
-        // 计算期望速度
-        const angleToTarget = Math.atan2(dy, dx);
-        let speed = this.unitMaxSpeed;
-        if (smoothStop) {
-            const stopDist = (Math.hypot(this.vx, this.vy) ** 2) / (2 * this.unitAccel);
-            if (dist <= stopDist + stopRadius) speed = 0;
-        }
-        const desiredVx = Math.cos(angleToTarget) * speed;
-        const desiredVy = Math.sin(angleToTarget) * speed;
-        // 计算转向力并应用惯性
-        if (Math.abs(desiredVx - this.vx) <= 0.5) this.vx = desiredVx;
-        else this.vx += (desiredVx - this.vx) * this.turnSensitivity * dt;
-        if (Math.abs(desiredVy - this.vy) <= 0.5) this.vy = desiredVy;
-        else this.vy += (desiredVy - this.vy) * this.turnSensitivity * dt;
-        this.x += this.vx * dt; this.y += this.vy * dt;
-    }
-
-    // 空中单位：只有同种类型才会排斥
-    applySeparation(dt, allUnits) {
-        let pushX = 0; let pushY = 0;
-        const repulsionStrength = 50; // 排斥力
-
-        for (let u of allUnits) {
-            if (u === this || !u.alive || u.constructor !== this.constructor) continue;
-
-            const dx = this.x - u.x; const dy = this.y - u.y;
-            const dist = Math.hypot(dx, dy);
-            const minDist = this.collisionRadius + u.collisionRadius;
-
-            if (dist < minDist) {
-                const angle = (dist === 0) ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx); // 排斥方向
-                const force = (minDist - dist) / minDist; // 距离越近，排斥力越大
-                pushX += Math.cos(angle) * force * repulsionStrength;
-                pushY += Math.sin(angle) * force * repulsionStrength;
-            }
-        }
-        this.x += pushX * dt; this.y += pushY * dt;
-    }
-
-    tryAttackAutoTarget(dt) {
-        this.scanForAutoTarget();
-        const target = this.autoTarget;
-        if (!target || !target.alive) return;
-        const { x: tx, y: ty } = target;
-        const dist = Math.hypot(tx - this.x, ty - this.y);
-        if (dist <= 15) { this.fire(); return; }
-
-        this.navTarget = { x: tx, y: ty };
-        const targetAngle = Math.atan2(ty - this.y, tx - this.x);
-        this.move(dt, tx, ty, 0, false);
-        this.rotate(dt, targetAngle);
-    }
-
-    update(dt) {
-        if (!this.alive) return;
-        super.update(dt);
-        this.applySeparation(dt, units);
-
-        switch (this.state) {
-            case BaseUnit.UNIT_STATE.DEPLOYING: { this.doDeploy(dt); break; }
-            case BaseUnit.UNIT_STATE.MOVING_TO_POS: { this.moveToPos(dt); break; }
-            case BaseUnit.UNIT_STATE.APPROACHING_CMD_TARGET:
-                {
-                    const target = this.cmdTarget;
-                    if (!target || !target.alive) { this.resetState(); return; }
-                    const dist = Math.hypot(target.x - this.x, target.y - this.y);
-                    if (dist <= 10) {
-                        this.navTarget = null;
-                        this.fire();
-                        break;
-                    }
-                    this.navTarget = { x: target.x, y: target.y };
-                    const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
-                    this.rotate(dt, targetAngle);
-                    this.move(dt, target.x, target.y, 0, false);
-                    break;
-                }
-            case BaseUnit.UNIT_STATE.FOLLOWING: { this.followLeader(dt); break; }
-            case BaseUnit.UNIT_STATE.IDLE: {
-                this.move(dt, this.x, this.y);
-                this.tryAttackAutoTarget(dt);
-                if (!this.autoTarget || !this.autoTarget.alive) this.rotate(dt, this.angle);
-                break;
-            }
-        }
-    }
-
-    fire() {
-        // 触碰爆炸
-        const target = this.validatePriorityTarget();
-        target.takeDamage({ attacker: this, damage: this.damage });
-        this.hp = 0; this.alive = false; this.state = null;
-        for (let i = 0; i < 20; i++) particles.push(new Particle(this.x, this.y, '#ff4400')); // 爆炸粒子
-    }
-
-    draw(ctx) {
-        if (!this.alive) return;
-        this.drawNavigationPath(ctx);
-
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        this.drawSelectionUI(ctx);
-        ctx.rotate(this.angle);
-
-        // 三角翼机身
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.colorTheme;
-        // 主翼
-        ctx.beginPath();
-        ctx.moveTo(15, 0); ctx.lineTo(-10, -15); ctx.lineTo(-5, 0); ctx.lineTo(-10, 15);
-        ctx.closePath();
-        ctx.fillStyle = '#222'; ctx.strokeStyle = this.colorTheme; ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-        // 核心
-        ctx.beginPath();
-        ctx.arc(-2, 0, 4, 0, Math.PI * 2);
-        ctx.fillStyle = this.colorTheme;
-        ctx.fill();
-        // 桨叶
-        const bladeAngle = (performance.now() / 20);
-        ctx.strokeStyle = '#bebebe'; ctx.lineWidth = 2;
-        [{ x: -8, y: -12 }, { x: -8, y: 12 }].forEach(pos => {
-            ctx.save();
-            ctx.translate(pos.x, pos.y);
-            ctx.rotate(bladeAngle);
-            ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
-            ctx.rotate(Math.PI / 2);
-            ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
-            ctx.restore();
-        });
-        ctx.restore();
-    }
-
-    checkCollision() {
-        const r = this.collisionRadius;
-        if (this.x - r < 0 || this.x + r > CONFIG.width || this.y - r < 0 || this.y + r > CONFIG.height) return true;
-        return false;
-    }
-}
-
 // 霰弹手
 class ShotgunUnit extends VehicleUnit {
-    static allowedTargets = [VehicleUnit, DroneUnit];
-
     constructor(owner) {
-        super(owner);
-        this.loadStats(CONFIG.UNIT_STATS.shotgun);
-
-        this.unitAccel = 40;
-        this.unitAngMaxSpeed = 6; this.unitAngAccel = 2;
-        this.turretMaxSpeed = 6; this.turretAccel = 3;
-
-        this.collisionRadius = 30;
+        super(owner, 'shotgun');
     }
 
     fire() {
@@ -1501,6 +1470,155 @@ class ShotgunUnit extends VehicleUnit {
         ctx.restore();
 
         ctx.restore();
+    }
+}
+
+// 无人机
+class DroneUnit extends BaseUnit {
+    constructor(owner) {
+        super(owner, 'drone');
+        this.vx = 0; this.vy = 0;
+    }
+
+    move(dt, tx, ty, stopRadius = 0, smoothStop = true) {
+        const dx = tx - this.x; const dy = ty - this.y;
+        const dist = Math.hypot(dx, dy);
+        // 计算期望速度
+        const angleToTarget = Math.atan2(dy, dx);
+        let speed = this.unitMaxSpeed;
+        if (smoothStop) {
+            const stopDist = (this.vx * this.vx + this.vy * this.vy) / (2 * this.unitAccel);
+            if (dist <= stopDist + stopRadius) speed = 0;
+        }
+        const desiredVx = Math.cos(angleToTarget) * speed;
+        const desiredVy = Math.sin(angleToTarget) * speed;
+        // 计算转向力并应用惯性
+        if (Math.abs(desiredVx - this.vx) <= 0.5) this.vx = desiredVx;
+        else this.vx += (desiredVx - this.vx) * this.turnSensitivity * dt;
+        if (Math.abs(desiredVy - this.vy) <= 0.5) this.vy = desiredVy;
+        else this.vy += (desiredVy - this.vy) * this.turnSensitivity * dt;
+        this.x += this.vx * dt; this.y += this.vy * dt;
+    }
+
+    // 空中单位：只有同种类型才会排斥
+    applySeparation(dt, allUnits) {
+        let pushX = 0; let pushY = 0;
+        const repulsionStrength = 50; // 排斥力
+
+        for (let u of allUnits) {
+            if (u === this || !u.alive || u.constructor !== this.constructor) continue;
+
+            const dx = this.x - u.x; const dy = this.y - u.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = this.collisionRadius + u.collisionRadius;
+
+            if (dist < minDist) {
+                const angle = (dist === 0) ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx); // 排斥方向
+                const force = (minDist - dist) / minDist; // 距离越近，排斥力越大
+                pushX += Math.cos(angle) * force * repulsionStrength;
+                pushY += Math.sin(angle) * force * repulsionStrength;
+            }
+        }
+        this.x += pushX * dt; this.y += pushY * dt;
+    }
+
+    update(dt) {
+        if (!this.alive) return;
+        super.update(dt);
+        this.applySeparation(dt, units);
+        this.runStateMachine(dt);
+    }
+
+    executeAttackOrder(dt, target) {
+        const dist = Math.hypot(target.x - this.x, target.y - this.y);
+        if (dist <= 10) {
+            this.navTarget = null;
+            this.fire();
+            return;
+        }
+        this.navTarget = { x: target.x, y: target.y };
+        const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
+        this.rotate(dt, targetAngle);
+        this.move(dt, target.x, target.y, 0, false);
+    }
+
+    tickIdle(dt) {
+        const autoCombatStatus = this.runAutoCombatBT(dt);
+        if (autoCombatStatus === BT_STATUS.FAILURE) {
+            this.move(dt, this.x, this.y);
+            this.rotate(dt, this.angle);
+        }
+        this.refreshStateFromOrder('drone idle sync');
+    }
+
+    engageAutoTarget(dt, target) {
+        const { x: tx, y: ty } = target;
+        const dist = Math.hypot(tx - this.x, ty - this.y);
+        if (dist <= 15) {
+            this.fire();
+            return BT_STATUS.SUCCESS;
+        }
+
+        this.navTarget = { x: tx, y: ty };
+        const targetAngle = Math.atan2(ty - this.y, tx - this.x);
+        this.move(dt, tx, ty, 0, false);
+        this.rotate(dt, targetAngle);
+        return BT_STATUS.RUNNING;
+    }
+
+    fire() {
+        // 触碰爆炸
+        const target = this.validatePriorityTarget();
+        target.takeDamage({ attacker: this, damage: this.damage });
+        this.hp = 0;
+        this.alive = false;
+        this.cleanupDestroyedState();
+        for (let i = 0; i < 20; i++) particles.push(new Particle(this.x, this.y, '#ff4400')); // 爆炸粒子
+    }
+
+    draw(ctx) {
+        if (!this.alive) return;
+        this.drawNavigationPath(ctx);
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        this.drawSelectionUI(ctx);
+        ctx.rotate(this.angle);
+
+        // 三角翼机身
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.colorTheme;
+        // 主翼
+        ctx.beginPath();
+        ctx.moveTo(15, 0); ctx.lineTo(-10, -15); ctx.lineTo(-5, 0); ctx.lineTo(-10, 15);
+        ctx.closePath();
+        ctx.fillStyle = '#222'; ctx.strokeStyle = this.colorTheme; ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+        // 核心
+        ctx.beginPath();
+        ctx.arc(-2, 0, 4, 0, Math.PI * 2);
+        ctx.fillStyle = this.colorTheme;
+        ctx.fill();
+        // 桨叶
+        const bladeAngle = (performance.now() / 20);
+        ctx.strokeStyle = '#bebebe'; ctx.lineWidth = 2;
+        [{ x: -8, y: -12 }, { x: -8, y: 12 }].forEach(pos => {
+            ctx.save();
+            ctx.translate(pos.x, pos.y);
+            ctx.rotate(bladeAngle);
+            ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+            ctx.restore();
+        });
+        ctx.restore();
+    }
+
+    checkCollision() {
+        const r = this.collisionRadius;
+        if (this.x - r < 0 || this.x + r > CONFIG.width || this.y - r < 0 || this.y + r > CONFIG.height) return true;
+        return false;
     }
 }
 
@@ -1576,7 +1694,6 @@ class GameConsole {
             this.executeCommand();
         } else {
             if (e.key === 'Backspace') this.inputBuffer = this.inputBuffer.slice(0, -1);
-            else if (e.key === 'Escape') this.deactivate();
             else if (e.key.length === 1) this.inputBuffer += e.key;
         }
     }
@@ -1602,44 +1719,28 @@ class GameConsole {
         const unit = blueFortress.selectedUnit;
         if (!unit || !unit.alive || !this.active) return;
         const now = performance.now();
-        if (now - this.lastBlink > 500) {
-            this.cursorVisible = !this.cursorVisible;
-            this.lastBlink = now;
-        }
+        if (now - this.lastBlink > 500) { this.cursorVisible = !this.cursorVisible; this.lastBlink = now; }
 
-        const margin = 20;
-        const h = 40;
+        const margin = 20; const h = 40;
         const y = CONFIG.height - h - margin;
         const w = CONFIG.width - 2 * margin;
 
         ctx.save();
         // 终端背景
-        ctx.fillStyle = 'rgba(10, 10, 15, 0.85)';
-        ctx.strokeStyle = unit ? unit.colorTheme : '#555';
-        ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'; ctx.strokeStyle = unit ? unit.colorTheme : '#555'; ctx.lineWidth = 2;
 
-        ctx.beginPath();
-        ctx.moveTo(margin, y);
-        ctx.lineTo(margin + w - 15, y);
-        ctx.lineTo(margin + w, y + 15);
-        ctx.lineTo(margin + w, y + h);
-        ctx.lineTo(margin, y + h);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(margin, y);
+        ctx.lineTo(margin + w - 15, y); ctx.lineTo(margin + w, y + 15);
+        ctx.lineTo(margin + w, y + h); ctx.lineTo(margin, y + h);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
 
         // 提示符与文本
-        ctx.font = '18px "Courier New"';
-        const theme = unit ? unit.colorTheme : '#555';
-        ctx.fillStyle = theme;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = theme;
+        ctx.font = '18px "Courier New"'; const theme = unit ? unit.colorTheme : '#555';
+        ctx.fillStyle = theme; ctx.shadowBlur = 10; ctx.shadowColor = theme;
 
-        const prompt = this.active ? "> " : "READY_ ";
-        const text = prompt + this.inputBuffer + (this.active && this.cursorVisible ? "_" : "");
+        const text = "> " + this.inputBuffer + (this.active && this.cursorVisible ? "_" : "");
 
         ctx.fillText(text, margin + 15, y + 26);
-
         ctx.restore();
     }
 }
@@ -1653,6 +1754,11 @@ class LevelManager {
         // 任务调度
         this.elapsedTime = 0;
         this.pendingTasks = [];
+
+        // 爆破余孽
+        this.cleanupQueue = [];
+        this.nextCleanupTime = 0;
+        this.cleanupInterval = 0.3; // 爆炸间隔 / 秒
     }
     startLevel(levelId) {
         const level = LEVEL_DATA[levelId];
@@ -1682,17 +1788,27 @@ class LevelManager {
         uiManager.add(`▶ 任務開始 - ${level.description}`, CONFIG.redTheme);
     }
     update(dt) {
-        if (this.state !== GAME_STATE.PLAYING) return;
         this.elapsedTime += dt;
-
-        for (let i = this.pendingTasks.length - 1; i >= 0; i--) {
-            const task = this.pendingTasks[i];
-            if (this.elapsedTime < task.triggerTime) continue; // 没到时间，如果任务按照时间排序，可以break掉
-            if (!task.unit.alive) continue;
-            // 执行预约的任务：设置目标点并切换状态
-            task.unit.targetPos = { x: task.targetPos.x * CONFIG.gridWidth, y: task.targetPos.y * CONFIG.gridWidth };
-            task.unit.switchState(BaseUnit.UNIT_STATE.MOVING_TO_POS);
-            this.pendingTasks.splice(i, 1);
+        if (this.state === GAME_STATE.PLAYING) {
+            for (let i = this.pendingTasks.length - 1; i >= 0; i--) {
+                const task = this.pendingTasks[i];
+                if (this.elapsedTime < task.triggerTime) continue; // 没到时间，如果任务按照时间排序，可以break掉
+                if (!task.unit.alive) continue;
+                task.unit.issueOrder({
+                    type: BaseUnit.ORDER_TYPE.MOVE,
+                    targetPos: { x: task.targetPos.x * CONFIG.gridWidth, y: task.targetPos.y * CONFIG.gridWidth }
+                }, 'scheduled move order');
+                this.pendingTasks.splice(i, 1);
+            }
+        }
+        if (this.cleanupQueue.length > 0 && this.elapsedTime >= this.nextCleanupTime) {
+            const unit = this.cleanupQueue.shift();
+            if (unit && unit.alive) {
+                unit.takeDamage({ attacker: (unit.side === 'red' ? blueFortress : redFortress), damage: 99999 });
+                camera.shake = 10;
+            }
+            this.nextCleanupTime = this.elapsedTime + this.cleanupInterval;
+            if (unit.side === 'red' && this.cleanupQueue.length === 0) uiManager.add('▶ 區域已清空', '#2ecc71');
         }
         this.checkGameStatus();
     }
@@ -1704,10 +1820,14 @@ class LevelManager {
                 this.clearedLevels.push(this.currentLevel);
                 localStorage.setItem('td_cleared_levels', JSON.stringify(this.clearedLevels));
             }
-            uiManager.add('▶ 戰役勝利：敵方要塞已摧毀。點擊任意位置返回指揮中心', '#2ecc71'); // todo: 爆特效，顺便把相同阵营的剩余单位一个个爆了给特效，爆完了再给消息并listen点击回menu
+            this.cleanupQueue = units.filter(u => u.side === 'red' && u.alive);
+            this.nextCleanupTime = this.elapsedTime + 0.5;
+            uiManager.add('▶ 戰役勝利：敵方要塞已摧毀。點擊任意位置返回指揮中心', '#2ecc71');
         } else if (!blueFortress.alive) {
             this.state = GAME_STATE.DEFEAT;
-            uiManager.add('▶ 戰役失敗：要塞失守。點擊任意位置返回指揮中心', CONFIG.redTheme);   // todo: 如果玩家选择重开/退出，也当作失败
+            this.cleanupQueue = units.filter(u => u.side === 'blue' && u.alive);
+            this.nextCleanupTime = this.elapsedTime + 0.5;
+            uiManager.add('▶ 戰役失敗：要塞失守。點擊任意位置返回指揮中心', CONFIG.redTheme);
         }
     }
     prepareUnits(levelUnits, fort) {
@@ -1729,17 +1849,20 @@ class LevelManager {
             }
 
             if (unitData.time > 0 && unitData.targetPos) {
-                u.switchState(BaseUnit.UNIT_STATE.IDLE);
+                u.transitionTo(BaseUnit.UNIT_STATE.IDLE, 'level spawn pending move');
                 this.pendingTasks.push({
                     triggerTime: unitData.time,
                     unit: u,
                     targetPos: unitData.targetPos
                 });
             } else if (unitData.targetPos) { // 没有执行刻
-                u.targetPos = { x: unitData.targetPos.x * CONFIG.gridWidth, y: unitData.targetPos.y * CONFIG.gridWidth };
-                u.switchState(BaseUnit.UNIT_STATE.MOVING_TO_POS);
+                u.transitionTo(BaseUnit.UNIT_STATE.IDLE, 'level spawn immediate move');
+                u.issueOrder({
+                    type: BaseUnit.ORDER_TYPE.MOVE,
+                    targetPos: { x: unitData.targetPos.x * CONFIG.gridWidth, y: unitData.targetPos.y * CONFIG.gridWidth }
+                }, 'level immediate move');
             } else {
-                u.switchState(BaseUnit.UNIT_STATE.IDLE);
+                u.transitionTo(BaseUnit.UNIT_STATE.IDLE, 'level spawn idle');
             }
         });
     }
@@ -1836,12 +1959,7 @@ class Camera {
         this.startX = 0;
         this.startY = 0;
         this.dragThreshold = 5;
-
-        // 特效
-        this.shake = 0;
-
-        // 初始化缩放
-        this.zoom = this.targetZoom = this.minZoom;
+        this.shake = 0; // 震动特效
     }
 
     update(dt) {
@@ -1925,22 +2043,36 @@ const CONFIG = {
 
     UNIT_STATS: {
         sniper: {
-            class: SniperUnit, name: '狙擊手',
-            cost: 50, hp: 1000, maxSpeed: 50, attackRange: 500,
-            damage: 200, reloadTime: 2.0, bulletSpeed: 1500,
+            class: SniperUnit, name: '狙擊手', domain: DOMAIN.GROUND,
+            cost: 50, hp: 1000, attackRange: 500,
+            damage: 200, reloadTime: 2000, bulletSpeed: 1500,
+            collisionRadius: 40,
+            unitMaxSpeed: 50, unitAccel: 10,
+            unitAngMaxSpeed: 2, unitAngAccel: 0.5,
+            turretMaxSpeed: 3.0, turretAccel: 1,
+            allowedTargets: [Fortress, VehicleUnit],
             priorityMap: new Map([[SniperUnit, 1], [ShotgunUnit, 2], [Fortress, 3]]),
         },
-        drone: {
-            class: DroneUnit, name: '無人機',
-            cost: 30, hp: 20, maxSpeed: 300, attackRange: 600,
-            damage: 500, reloadTime: null, bulletSpeed: null,
-            priorityMap: new Map([[ShotgunUnit, 1], [SniperUnit, 2], [Fortress, 3]]),
-        },
         shotgun: {
-            class: ShotgunUnit, name: '霰彈兵',
-            cost: 40, hp: 250, maxSpeed: 160, attackRange: 350,
-            damage: 20, reloadTime: 1.0, bulletSpeed: 800,
-            priorityMap: new Map([[DroneUnit, 1], [SniperUnit, 2], [Fortress, 3]]),
+            class: ShotgunUnit, name: '霰彈兵', domain: DOMAIN.GROUND,
+            cost: 40, hp: 250, attackRange: 350,
+            damage: 20, reloadTime: 1000, bulletSpeed: 800,
+            collisionRadius: 30,
+            unitMaxSpeed: 160, unitAccel: 40,
+            unitAngMaxSpeed: 6, unitAngAccel: 2,
+            turretMaxSpeed: 6, turretAccel: 3,
+            allowedTargets: [VehicleUnit, DroneUnit],
+            priorityMap: new Map([[DroneUnit, 1], [SniperUnit, 2]]),
+        },
+        drone: {
+            class: DroneUnit, name: '無人機', domain: DOMAIN.AIR,
+            cost: 30, hp: 20, attackRange: 600, damage: 500,
+            collisionRadius: 20,
+            unitMaxSpeed: 300, unitAccel: 400,
+            unitAngMaxSpeed: 8, unitAngAccel: 4,
+            turnSensitivity: 5.0, // 转向灵敏度
+            allowedTargets: [Fortress, VehicleUnit],
+            priorityMap: new Map([[ShotgunUnit, 1], [SniperUnit, 2], [Fortress, 3]]),
         },
     },
 };
@@ -2040,8 +2172,20 @@ window.addEventListener('mouseup', (e) => {
     }
 });
 
-window.addEventListener('keydown', (e) => { gameConsole.handleKeyDown(e); });
+window.addEventListener('keydown', (e) => {
+    if (levelManager.state !== GAME_STATE.PLAYING) return;
+    if (e.key === 'Escape') blueFortress.takeDamage({ attacker: redFortress, damage: CONFIG.maxHp });
+    else gameConsole.handleKeyDown(e);
+});
 
+function initUnitDefinitions() {
+    for (const key in CONFIG.UNIT_STATS) {
+        const stats = CONFIG.UNIT_STATS[key];
+        if (stats.class && stats.allowedTargets) {
+            stats.class.allowedTargets = stats.allowedTargets;
+        }
+    }
+}
 function drawGrid(ctx) {
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; ctx.lineWidth = 1;
@@ -2076,11 +2220,11 @@ function gameLoop(now) {
         bullets = bullets.filter(b => b.alive);
         particles = particles.filter(p => p.life > 0);
 
-        units.filter(u => u.domain === 'GROUND').forEach(u => { u.update(dt); u.draw(ctx); });
-        bullets.forEach(b => { b.update(dt, units, blueFortress, redFortress, particles); b.draw(ctx); });
+        units.filter(u => u.domain === DOMAIN.GROUND).forEach(u => { u.update(dt); u.draw(ctx); });
+        bullets.forEach(b => { b.update(dt); b.draw(ctx); });
         particles.forEach(p => { p.update(dt); p.draw(ctx); });
         blueFortress.drawBase(ctx); redFortress.drawBase(ctx);
-        units.filter(u => u.domain === 'AIR').forEach(u => { u.update(dt); u.draw(ctx); });
+        units.filter(u => u.domain === DOMAIN.AIR).forEach(u => { u.update(dt); u.draw(ctx); });
 
         ctx.restore();
 
@@ -2093,4 +2237,5 @@ function gameLoop(now) {
     }
     requestAnimationFrame(gameLoop);
 }
+initUnitDefinitions();
 requestAnimationFrame(gameLoop);
