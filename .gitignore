@@ -1,0 +1,10 @@
+# C++ WASM 构建产物
+src/game.html
+src/game.js
+src/game.wasm
+
+# 工具链（自包含，不入库）
+deps/
+
+# Claude 项目文档
+CLAUDE.md
