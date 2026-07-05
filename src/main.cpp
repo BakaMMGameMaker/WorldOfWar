@@ -3,25 +3,20 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
-
-// ============================================================================
-// 画布配置
-// ============================================================================
-constexpr int W    = 1200;
-constexpr int H    = 800;
-constexpr int GRID = 80;   // 网格间距
+#include "CanvasConfig.h"
 
 // ============================================================================
 // 帧缓冲（CPU 端 RGBA 像素数组，JS 侧通过 HEAPU8 零拷贝读取）
 // ============================================================================
-static uint32_t g_pixels[W * H];
+static uint32_t g_pixels[WorldOfWar::Canvas::GetCanvasWidth() *
+                         WorldOfWar::Canvas::GetCanvasHeight()];
 static float    g_time = 0.0f;
 
 // ============================================================================
 // 玩家状态
 // ============================================================================
-static float g_playerX     = W / 2.0f - 25.0f;   // 玩家方块 X（左上角）
-static float g_playerY     = H / 2.0f - 25.0f;   // 玩家方块 Y（左上角）
+static float g_playerX     = WorldOfWar::Canvas::GetCanvasWidth()  / 2.0f - 25.0f;
+static float g_playerY     = WorldOfWar::Canvas::GetCanvasHeight() / 2.0f - 25.0f;
 static int   g_playerSize  = 50;                  // 玩家方块尺寸（宽高相等）
 static float g_playerSpeed = 300.0f;              // 移动速度（像素/秒）
 
@@ -46,11 +41,15 @@ static int g_playerColorIdx = 0;  // 当前颜色索引
 // 像素写入（RGBA 小端序，与 Canvas ImageData 一致）
 // ============================================================================
 static inline void setPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+    constexpr int W = WorldOfWar::Canvas::GetCanvasWidth();
+    constexpr int H = WorldOfWar::Canvas::GetCanvasHeight();
     if ((unsigned)x >= (unsigned)W || (unsigned)y >= (unsigned)H) return;
     g_pixels[y * W + x] = (255u << 24) | ((uint32_t)b << 16) | ((uint32_t)g << 8) | r;
 }
 
 static void fillRect(int rx, int ry, int rw, int rh, uint8_t r, uint8_t g, uint8_t b) {
+    constexpr int W = WorldOfWar::Canvas::GetCanvasWidth();
+    constexpr int H = WorldOfWar::Canvas::GetCanvasHeight();
     int x0 = rx < 0 ? 0 : rx;
     int y0 = ry < 0 ? 0 : ry;
     int x1 = rx + rw > W ? W : rx + rw;
@@ -117,6 +116,10 @@ void onMouseButton(int x, int y, int button, int down) {
 // ============================================================================
 EMSCRIPTEN_KEEPALIVE
 void renderFrame() {
+    constexpr int W    = WorldOfWar::Canvas::GetCanvasWidth();
+    constexpr int H    = WorldOfWar::Canvas::GetCanvasHeight();
+    constexpr int GRID = WorldOfWar::Canvas::GetGridSize();
+
     g_time += 0.016f;
 
     // 深色背景
@@ -178,15 +181,18 @@ EMSCRIPTEN_KEEPALIVE
 uint8_t* getPixels() { return (uint8_t*)g_pixels; }
 
 EMSCRIPTEN_KEEPALIVE
-int getWidth()  { return W; }
+int getWidth()  { return WorldOfWar::Canvas::GetCanvasWidth(); }
 
 EMSCRIPTEN_KEEPALIVE
-int getHeight() { return H; }
+int getHeight() { return WorldOfWar::Canvas::GetCanvasHeight(); }
 
 } // extern "C"
 
 // ============================================================================
 int main() {
+    constexpr int W = WorldOfWar::Canvas::GetCanvasWidth();
+    constexpr int H = WorldOfWar::Canvas::GetCanvasHeight();
+
     printf("[C++] 帧缓冲: %dx%d (%zu 字节)\n", W, H, sizeof(g_pixels));
     printf("[C++] 玩家输入: WASD 移动 / 点击切换颜色\n");
     printf("[C++] 等待 JS 渲染循环启动...\n");
