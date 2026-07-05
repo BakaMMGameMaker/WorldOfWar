@@ -15,6 +15,24 @@
 
 正在用 C++ + WebAssembly 重写核心引擎，在 Canvas 上以 160+ FPS 运行。
 
+已完成的 C++ 模块：
+- 帧缓冲 + 基本绘图（Canvas 模块）
+- 键盘/鼠标输入状态管理（Input 模块）
+- JS → C++ 桥接层（Bridge 模块）
+- **ECS 实体组件系统框架**（ECS 模块）— 基于原版 game.js 需求设计
+
+### ECS 框架概览
+
+轻量级 ECS，不依赖第三方库：
+
+- Entity = uint32_t 句柄，含版本号防悬空
+- Component = POD 结构体（18 种），覆盖 game.js 全部实体
+- ComponentPool\<T\> = 稀疏集合，O(1) 增删查 + 缓存友好迭代
+- System = 纯逻辑类，通过 `World::View<Ts...>()` 多组件查询
+- World = 中央调度器，管理实体/组件生命周期与系统按序更新
+
+详见 [CLAUDE.md](CLAUDE.md) 的 ECS 框架章节。
+
 ### 构建
 
 需要 [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) + Node.js（TypeScript 编译）：
