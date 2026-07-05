@@ -8,7 +8,7 @@
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#0a0a14;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Consolas,monospace}
   #wrap{position:relative;border:2px solid #1a3a5c;border-radius:4px;line-height:0}
-  canvas{display:block;background:#0f0f1e}
+  canvas{display:block;background:#0f0f1e;cursor:crosshair}
   #bar{display:flex;justify-content:space-between;padding:4px 10px;font-size:12px;background:#0d0d1a;border:1px solid #1a3a5c;border-radius:3px;color:#4a9;margin-top:8px}
 </style>
 </head>
@@ -19,55 +19,22 @@
 </div>
 
 <script>
-var statusEl = document.getElementById('status');
-var fpsEl    = document.getElementById('fps');
-var canvas   = document.getElementById('canvas');
-var ctx      = canvas.getContext('2d');
-var imgData  = ctx.createImageData(1200, 800);
-var buf8     = new Uint8Array(imgData.data.buffer);
-var fc = 0, ft = 0, fp = 0, ftLast = 0;
-
+// Emscripten Module 最小化配置
+// 具体初始化逻辑见 TypeScript/main.ts
 var Module = {
-  canvas: canvas,
+  canvas:    document.getElementById('canvas'),
   print:     function(t) { console.log('[C++]', t); },
   printErr:  function(t) { console.error('[C++ ERR]', t); },
-  setStatus: function(t) { if (t) statusEl.textContent = t; },
-
-  onRuntimeInitialized: function() {
-    console.log('[JS] WASM 模块就绪');
-
-    var renderFrame = Module.cwrap('renderFrame', null, []);
-    var getPixels   = Module.cwrap('getPixels', 'number', []);
-    var w = Module.cwrap('getWidth', 'number', [])();
-    var h = Module.cwrap('getHeight', 'number', [])();
-
-    console.log('[JS] 帧缓冲: ' + w + 'x' + h + ', 指针: 0x' + getPixels().toString(16));
-
-    (function loop(ts) {
-      renderFrame();
-
-      var ptr = getPixels();
-      var src = new Uint8Array(Module.HEAPU8.buffer, ptr, w * h * 4);
-      buf8.set(src);
-      ctx.putImageData(imgData, 0, 0);
-
-      fc++;
-      ft += (ts - (ftLast || ts)) / 1000;
-      ftLast = ts;
-      if (ft >= 1.0) {
-        var fpsNow = Math.round(fc / ft);
-        fpsEl.textContent = 'FPS: ' + fpsNow + '  |  ' + w + 'x' + h;
-        fc = 0; ft = 0;
-      }
-
-      requestAnimationFrame(loop);
-    })(0);
-
-    statusEl.textContent = '运行中';
-    statusEl.style.color = '#4a9';
-  }
+  setStatus: function(t) {
+    var el = document.getElementById('status');
+    if (el && t) el.textContent = t;
+  },
+  // _wasmReady 标志：main.ts 用此判断是否需要等待 WASM 初始化
+  _wasmReady: false,
 };
 </script>
 {{{ SCRIPT }}}
+<!-- TypeScript 编译产物 -->
+<script type="module" src="build/main.js"></script>
 </body>
 </html>

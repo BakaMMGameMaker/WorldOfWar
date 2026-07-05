@@ -1,14 +1,3 @@
-/**
- * WorldOfWar - C++ 核心渲染验证
- *
- * 编译：
- *   source src/env.sh
- *   emcc src/main.cpp -o src/game.html --shell-file src/shell.html \
- *     -s WASM=1 -O3 \
- *     -s EXPORTED_RUNTIME_METHODS='["cwrap","HEAPU8"]' \
- *     -s EXPORTED_FUNCTIONS='["_renderFrame","_getPixels","_getWidth","_getHeight","_malloc","_free"]'
- */
-
 #include <emscripten.h>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +16,27 @@ constexpr int GRID = 80;   // 网格间距
 // ============================================================================
 static uint32_t g_pixels[W * H];
 static float    g_time = 0.0f;
+
+// ============================================================================
+// 玩家状态
+// ============================================================================
+static float g_playerX     = W / 2.0f - 25.0f;   // 玩家方块 X（左上角）
+static float g_playerY     = H / 2.0f - 25.0f;   // 玩家方块 Y（左上角）
+static int   g_playerSize  = 50;                  // 玩家方块尺寸（宽高相等）
+static float g_playerSpeed = 300.0f;              // 移动速度（像素/秒）
+
+// 按键状态表：按下为 true，松开为 false，索引为 keyCode
+static bool g_keyDown[256] = {};
+
+// 颜色方案（点击切换）
+static const struct { uint8_t r, g, b; const char* name; } g_colorSchemes[] = {
+    {  0, 200, 230, "青色"  },
+    { 230,  80,  80, "红色"  },
+    { 80, 230,  80, "绿色"  },
+    { 230, 200,  40, "金色"  },
+};
+static constexpr int g_colorSchemeCount = sizeof(g_colorSchemes) / sizeof(g_colorSchemes[0]);
+static int g_playerColorIdx = 0;  // 当前颜色索引
 
 // ============================================================================
 // 像素写入（RGBA 小端序，与 Canvas ImageData 一致）
@@ -48,11 +58,42 @@ static void fillRect(int rx, int ry, int rw, int rh, uint8_t r, uint8_t g, uint8
             g_pixels[y * W + x] = c;
 }
 
+// 绘制空心矩形边框
+static void drawRectBorder(int rx, int ry, int rw, int rh, int thickness,
+                           uint8_t r, uint8_t g, uint8_t b) {
+    fillRect(rx, ry, rw, thickness, r, g, b);                     // 上
+    fillRect(rx, ry + rh - thickness, rw, thickness, r, g, b);    // 下
+    fillRect(rx, ry, thickness, rh, r, g, b);                     // 左
+    fillRect(rx + rw - thickness, ry, thickness, rh, r, g, b);    // 右
+}
+
 // ============================================================================
-// 导出：JS 侧每帧调用 renderFrame()，再通过 getPixels() 读像素
+// 导出函数：玩家输入接口（JS 侧调用）
 // ============================================================================
 extern "C" {
 
+// 按键事件：keyCode 为浏览器键码，down=1 表示按下，0 表示松开
+EMSCRIPTEN_KEEPALIVE
+void onKeyEvent(int keyCode, int down) {
+    if ((unsigned)keyCode >= 256u) return;
+    g_keyDown[keyCode] = (down != 0);
+}
+
+// 鼠标点击事件：x, y 为 canvas 坐标系中的点击位置
+EMSCRIPTEN_KEEPALIVE
+void onMouseClick(int x, int y) {
+    // 检测点击是否命中玩家方块
+    if (x >= (int)g_playerX && x < (int)g_playerX + g_playerSize &&
+        y >= (int)g_playerY && y < (int)g_playerY + g_playerSize) {
+        g_playerColorIdx = (g_playerColorIdx + 1) % g_colorSchemeCount;
+        printf("[C++] 玩家被点击！切换颜色: %s (索引 %d)\n",
+               g_colorSchemes[g_playerColorIdx].name, g_playerColorIdx);
+    }
+}
+
+// ============================================================================
+// 渲染：JS 侧每帧调用 renderFrame()
+// ============================================================================
 EMSCRIPTEN_KEEPALIVE
 void renderFrame() {
     g_time += 0.016f;
@@ -80,10 +121,27 @@ void renderFrame() {
             (uint8_t)(10  + i * 8));
     }
 
-    // 玩家方块（青色）圆周运动
-    int px = (int)(W / 2 + cosf(g_time * 0.5f) * 250.0f - 25);
-    int py = (int)(H / 2 + sinf(g_time * 0.7f) * 180.0f - 25);
-    fillRect(px, py, 50, 50, 0, 200, 220);
+    // ----- 玩家方块：根据按键状态更新位置 -----
+    float dt = 0.016f;  // 固定帧间隔
+    float move = g_playerSpeed * dt;
+
+    if (g_keyDown[87] || g_keyDown[38]) g_playerY -= move;  // W / 上箭头
+    if (g_keyDown[83] || g_keyDown[40]) g_playerY += move;  // S / 下箭头
+    if (g_keyDown[65] || g_keyDown[37]) g_playerX -= move;  // A / 左箭头
+    if (g_keyDown[68] || g_keyDown[39]) g_playerX += move;  // D / 右箭头
+
+    // 边界限制
+    if (g_playerX < 0) g_playerX = 0;
+    if (g_playerY < 0) g_playerY = 0;
+    if (g_playerX > W - g_playerSize) g_playerX = W - g_playerSize;
+    if (g_playerY > H - g_playerSize) g_playerY = H - g_playerSize;
+
+    // 绘制玩家方块（当前颜色方案）
+    auto& c = g_colorSchemes[g_playerColorIdx];
+    fillRect((int)g_playerX, (int)g_playerY, g_playerSize, g_playerSize, c.r, c.g, c.b);
+
+    // 玩家方块边框（白色，方便识别）
+    drawRectBorder((int)g_playerX, (int)g_playerY, g_playerSize, g_playerSize, 1, 255, 255, 255);
 
     // FPS 条（绿色横条）
     static int tick = 0;
@@ -109,6 +167,7 @@ int getHeight() { return H; }
 // ============================================================================
 int main() {
     printf("[C++] 帧缓冲: %dx%d (%zu 字节)\n", W, H, sizeof(g_pixels));
+    printf("[C++] 玩家输入: WASD 移动 / 点击切换颜色\n");
     printf("[C++] 等待 JS 渲染循环启动...\n");
     return 0;
 }
