@@ -64,7 +64,7 @@ export function initInput(wasm: WasmAPI, canvas: HTMLCanvasElement): void {
 
   // ---- 鼠标 ----
 
-  /** 计算 canvas 坐标系中的点击坐标（考虑 CSS 缩放） */
+  /** 计算 canvas 坐标系中的坐标（考虑 CSS 缩放） */
   function canvasCoords(e: MouseEvent): { cx: number; cy: number } {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width  / rect.width;
@@ -75,16 +75,34 @@ export function initInput(wasm: WasmAPI, canvas: HTMLCanvasElement): void {
     };
   }
 
-  // 左键点击 → C++ onMouseClick
+  // 光标移动（document 级别，支持边缘滚动检测）
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    const { cx, cy } = canvasCoords(e);
+    wasm.onMouseMove(cx, cy);
+  });
+
+  // 鼠标按下（左/中/右键，用于框选开始、指令下发等）
+  canvas.addEventListener('mousedown', (e: MouseEvent) => {
+    const { cx, cy } = canvasCoords(e);
+    wasm.onMouseButton(cx, cy, e.button, 1);
+  });
+
+  // 鼠标松开
+  canvas.addEventListener('mouseup', (e: MouseEvent) => {
+    const { cx, cy } = canvasCoords(e);
+    wasm.onMouseButton(cx, cy, e.button, 0);
+  });
+
+  // 左键点击（click = mousedown + mouseup 在同一点）
   canvas.addEventListener('click', (e: MouseEvent) => {
     const { cx, cy } = canvasCoords(e);
     wasm.onMouseClick(cx, cy);
   });
 
-  // 阻止画布上的右键菜单（右键后续可用于框选/命令等）
+  // 阻止画布上的右键菜单（右键指令由 mousedown/mouseup 处理）
   canvas.addEventListener('contextmenu', (e: Event) => {
     e.preventDefault();
   });
 
-  console.log('[TS] 输入管理就绪 (拦截 ' + GAME_KEYS.size + ' 种按键)');
+  console.log('[TS] 输入管理就绪 (拦截 ' + GAME_KEYS.size + ' 种按键 + 完整鼠标事件)');
 }
