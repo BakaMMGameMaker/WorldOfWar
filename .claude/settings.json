@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd d:/WorldOfWar/src && source env.sh && cmake --build build*)",
+      "Bash(cd d:/WorldOfWar/src && source env.sh && emcmake cmake -B build*)",
+      "Bash(cd d:/WorldOfWar && git status*)",
+      "Bash(cd d:/WorldOfWar && git add *)",
+      "Bash(cd d:/WorldOfWar && git commit *)",
+      "Bash(cd d:/WorldOfWar && git log *)",
+      "Bash(cd d:/WorldOfWar && git diff *)",
+      "Bash(mkdir -p d:/WorldOfWar/src/*)",
+      "Bash(ls d:/WorldOfWar/src/*)",
+      "Bash(cat d:/WorldOfWar/src/*)"
+    ]
+  }
+}
