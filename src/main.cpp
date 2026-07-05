@@ -1,7 +1,10 @@
 #include <emscripten.h>
 #include <cstdio>
-#include "Canvas.h"
-#include "CanvasConfig.h"
+#include "Canvas/Canvas.h"
+#include "Canvas/CanvasConfig.h"
+
+namespace C = WorldOfWar::Canvas;
+namespace T = WorldOfWar::Types;
 
 // ============================================================================
 // 输入状态
@@ -51,29 +54,26 @@ void onMouseButton(int x, int y, int button, int down) {
 EMSCRIPTEN_KEEPALIVE
 void renderFrame() {
     // 深色背景（待迁移 game.js 的渲染逻辑后丰富）
-    WorldOfWar::Canvas::Clear(12, 12, 26);
+    C::Clear(T::RGB{12, 12, 26});
 }
 
 // ============================================================================
 // JS 桥接：帧缓冲指针 + 画布尺寸
 // ============================================================================
 EMSCRIPTEN_KEEPALIVE
-uint8_t* getPixels() { return WorldOfWar::Canvas::GetPixels(); }
+uint8_t* getPixels() { return C::GetPixels(); }
 
 EMSCRIPTEN_KEEPALIVE
-int getWidth()  { return WorldOfWar::Canvas::GetCanvasWidth(); }
+int getWidth()  { return C::GetCanvasWidth(); }
 
 EMSCRIPTEN_KEEPALIVE
-int getHeight() { return WorldOfWar::Canvas::GetCanvasHeight(); }
+int getHeight() { return C::GetCanvasHeight(); }
 
 } // extern "C"
 
 // ============================================================================
 int main() {
-    constexpr int W = WorldOfWar::Canvas::GetCanvasWidth();
-    constexpr int H = WorldOfWar::Canvas::GetCanvasHeight();
-
-    printf("[C++] 帧缓冲: %dx%d\n", W, H);
+    printf("[C++] 帧缓冲: %dx%d\n", C::GetCanvasWidth(), C::GetCanvasHeight());
     printf("[C++] 等待 JS 渲染循环启动...\n");
     return 0;
 }
