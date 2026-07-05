@@ -17,21 +17,18 @@
 
 ### 构建
 
-需要 [Emscripten](https://emscripten.org/docs/getting_started/downloads.html)（`emcc` 命令可用）：
+需要 [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) + Node.js（TypeScript 编译）：
 
 ```bash
-# 1. 设置环境
-source src/env.sh          # 或手动 export 你的 emsdk 路径
+# 1. TypeScript → JavaScript
+npx tsc -p src/TypeScript/tsconfig.json
 
-# 2. 编译
-emcc src/main.cpp -o src/game.html \
-  --shell-file src/shell.html \
-  -s WASM=1 -O3 \
-  -s EXPORTED_RUNTIME_METHODS='["cwrap","HEAPU8"]' \
-  -s EXPORTED_FUNCTIONS='["_renderFrame","_getPixels","_getWidth","_getHeight","_malloc","_free"]'
+# 2. C++ → WASM（CMake 构建）
+source src/env.sh
+cd src && emcmake cmake -B build && cmake --build build
 
 # 3. 启动本地服务器
-cd src && python -m http.server 8080
+cd src && ../deps/python/python.exe -m http.server 8080
 
 # 4. 浏览器打开 http://localhost:8080/game.html
 ```

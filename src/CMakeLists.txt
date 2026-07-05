@@ -16,6 +16,7 @@ file(GLOB GAME_SOURCES
     "*.cpp"
     "private/*.cpp"
     "private/*/*.cpp"
+    "private/*/*/*.cpp"
 )
 add_executable(game ${GAME_SOURCES})
 

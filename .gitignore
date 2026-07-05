@@ -6,6 +6,7 @@ src/build/
 src/game.html
 src/game.js
 src/game.wasm
+build/
 
 # 工具链（自包含，不入库）
 deps/
