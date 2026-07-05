@@ -13,3 +13,7 @@ deps/
 # Claude 项目文档
 CLAUDE.md
 .claude/
+
+# IDE 配置
+.vscode/
+.clangd

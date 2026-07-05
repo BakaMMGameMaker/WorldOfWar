@@ -49,7 +49,6 @@ int getHeight() { return Game::Canvas::GetCanvasHeight(); }
 
 } // extern "C"
 
-// ============================================================================
 int main() {
     printf("[C++] 帧缓冲: %dx%d\n",
            Game::Canvas::GetCanvasWidth(),

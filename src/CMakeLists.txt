@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(WorldOfWar LANGUAGES CXX)
 
+# 生成 compile_commands.json，供 clangd 获取头文件搜索路径
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # ============================================================================
 # 产物输出到 src/（兼容 shell.html 中 "build/main.js" 的相对路径）
 # ============================================================================
