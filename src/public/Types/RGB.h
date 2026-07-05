@@ -3,7 +3,7 @@
 
 // 基础类型定义
 
-namespace WorldOfWar {
+namespace Game {
 namespace Types {
 
 /// RGB 颜色（各通道 0–255）
@@ -12,4 +12,4 @@ struct RGB {
 };
 
 } // namespace Types
-} // namespace WorldOfWar
+} // namespace Game

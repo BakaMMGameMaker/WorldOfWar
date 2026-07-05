@@ -4,12 +4,12 @@
 namespace {
 
 // 帧缓冲（CPU 端 RGBA 像素数组，JS 侧通过 HEAPU8 零拷贝读取）
-uint32_t GFrameBuffer[WorldOfWar::Canvas::GetCanvasWidth() *
-                      WorldOfWar::Canvas::GetCanvasHeight()];
+uint32_t GFrameBuffer[Game::Canvas::GetCanvasWidth() *
+                      Game::Canvas::GetCanvasHeight()];
 
 } // namespace
 
-namespace WorldOfWar {
+namespace Game {
 namespace Canvas {
 
 uint8_t* GetPixels() {
@@ -54,4 +54,4 @@ void DrawRectBorder(const int X, const int Y, const int W, const int H, const in
 }
 
 } // namespace Canvas
-} // namespace WorldOfWar
+} // namespace Game

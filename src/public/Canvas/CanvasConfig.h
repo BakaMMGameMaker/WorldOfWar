@@ -11,7 +11,7 @@ inline constexpr int kGridSize     = 100;
 
 } // namespace
 
-namespace WorldOfWar {
+namespace Game {
 namespace Canvas {
 
 // getter（constexpr，编译期可求值）
@@ -20,4 +20,4 @@ constexpr int GetCanvasHeight() { return kCanvasHeight; }
 constexpr int GetGridSize()     { return kGridSize; }
 
 } // namespace Canvas
-} // namespace WorldOfWar
+} // namespace Game

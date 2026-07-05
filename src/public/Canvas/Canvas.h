@@ -5,7 +5,7 @@
 // Canvas — 帧缓冲管理与基本绘图操作
 // GFrameBuffer 在 Canvas/Canvas.cpp 匿名 namespace 中，外部不可直接访问
 
-namespace WorldOfWar {
+namespace Game {
 namespace Canvas {
 
 // 帧缓冲指针（JS 侧通过 HEAPU8 零拷贝读取）
@@ -25,4 +25,4 @@ void DrawRectBorder(int X, int Y, int W, int H, int Thickness,
                     const Types::RGB Color);
 
 } // namespace Canvas
-} // namespace WorldOfWar
+} // namespace Game
