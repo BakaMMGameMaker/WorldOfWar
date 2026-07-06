@@ -25,7 +25,7 @@
 
 轻量级 ECS，不依赖第三方库：
 
-- Entity = uint32_t 句柄，含版本号防悬空
+- FEntity = uint32_t 句柄，含版本号防悬空
 - Component = POD 结构体（18 种），覆盖 game.js 全部实体
 - ComponentPool\<T\> = 稀疏集合，O(1) 增删查 + 缓存友好迭代
 - System = 纯逻辑类，通过 `World::View<Ts...>()` 多组件查询
@@ -41,9 +41,8 @@
 # 1. TypeScript → JavaScript
 npx tsc -p src/TypeScript/tsconfig.json
 
-# 2. C++ → WASM（CMake 构建）
-source src/env.sh
-cd src && emcmake cmake -B build && cmake --build build
+# 2. C++ → WASM
+bash src/build.sh
 
 # 3. 启动本地服务器
 cd src && ../deps/python/python.exe -m http.server 8080

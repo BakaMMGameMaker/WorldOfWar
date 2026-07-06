@@ -20,62 +20,54 @@ namespace Game {
 namespace ECS {
 
 class World {
-   public:
+public:
     World();
     ~World();
 
-    // ========================================================================
     // 实体管理
-    // ========================================================================
 
     /// 创建新实体，返回实体句柄
-    Entity CreateEntity();
+    FEntity CreateEntity();
 
-    /// 销毁实体（同时移除其所有组件）
-    void DestroyEntity(Entity E);
+    /// 销毁实体，同时移除其所有组件
+    void DestroyEntity(FEntity E);
 
     /// 检查实体是否存活
-    bool IsAlive(Entity E) const;
+    bool IsAlive(FEntity E) const;
 
     /// 当前存活实体数量
-    size_t EntityCount() const;
+    size_t AliveEntityCount() const;
 
-    // ========================================================================
-    // 组件操作（模板，实现在头文件末尾）
-    // ========================================================================
+    // 组件操作
 
     /// 为实体添加组件（已有同类型则覆盖），返回组件引用
     template <typename T>
-    T& AddComponent(Entity E, const T& Component = T{});
+    T& AddComponent(FEntity E, const T& Component = T{});
 
     /// 移除实体上的指定类型组件
     template <typename T>
-    void RemoveComponent(Entity E);
+    void RemoveComponent(FEntity E);
 
     /// 获取实体上的组件指针（不存在返回 nullptr）
     template <typename T>
-    T* GetComponent(Entity E);
+    T* GetComponent(FEntity E);
 
     /// const 版本
     template <typename T>
-    const T* GetComponent(Entity E) const;
+    const T* GetComponent(FEntity E) const;
 
     /// 检查实体是否拥有指定类型组件
     template <typename T>
-    bool HasComponent(Entity E) const;
+    bool HasComponent(FEntity E) const;
 
-    // ========================================================================
     // 多组件查询
-    // ========================================================================
 
     /// 返回拥有所有指定组件的实体列表
     /// 示例: auto entities = world.View<TransformComponent, HealthComponent>();
     template <typename... Ts>
-    std::vector<Entity> View();
+    std::vector<FEntity> View();
 
-    // ========================================================================
     // 系统管理
-    // ========================================================================
 
     /// 注册系统（World 持有所有权）
     void AddSystem(std::unique_ptr<System> Sys);
@@ -83,24 +75,23 @@ class World {
     /// 按注册顺序执行所有系统的 Update
     void Update(float DeltaTime);
 
-    // ========================================================================
     // 组件池访问（内部使用）
-    // ========================================================================
     template <typename T>
     ComponentPool<T>& GetPool();
 
-   private:
+private:
     /// 将系统首次注册时的 OnCreate 延迟到此处执行
     void FlushPendingSystems();
 
     // —— 实体管理 ——
     struct EntityRecord {
-        bool alive = false;
-        uint32_t version = 0;
+        bool Alive = false;
+        FEntityVersion Version = 0;
     };
-    std::vector<EntityRecord> _entities;   // 索引 → 实体记录
-    std::vector<uint32_t> _freeIndices;    // 空闲索引列表（回收复用）
-    size_t _aliveCount = 0;
+
+    std::vector<EntityRecord> _EntityRecords;  // 索引 → 实体记录
+    std::vector<uint32_t> _FreeIndices;        // 空闲索引列表
+    size_t _AliveEntityCount = 0;              // 存活实体数量
 
     // —— 组件存储 ——
     // 每个组件类型一个池，按 type_index 索引
@@ -112,10 +103,7 @@ class World {
     bool _systemsDirty = false;            // 是否有待初始化系统
 };
 
-// ============================================================================
-// 模板实现（必须在头文件中）
-// ============================================================================
-
+// 模板实现
 template <typename T>
 ComponentPool<T>& World::GetPool() {
     auto key = std::type_index(typeid(T));
@@ -130,22 +118,22 @@ ComponentPool<T>& World::GetPool() {
 }
 
 template <typename T>
-T& World::AddComponent(Entity E, const T& Component) {
+T& World::AddComponent(FEntity E, const T& Component) {
     return GetPool<T>().Add(E, Component);
 }
 
 template <typename T>
-void World::RemoveComponent(Entity E) {
+void World::RemoveComponent(FEntity E) {
     GetPool<T>().Remove(E);
 }
 
 template <typename T>
-T* World::GetComponent(Entity E) {
+T* World::GetComponent(FEntity E) {
     return GetPool<T>().Get(E);
 }
 
 template <typename T>
-const T* World::GetComponent(Entity E) const {
+const T* World::GetComponent(FEntity E) const {
     // const 版本需要 const_cast 来延迟创建池（只在已存在时查询）
     auto key = std::type_index(typeid(T));
     auto it = _pools.find(key);
@@ -154,7 +142,7 @@ const T* World::GetComponent(Entity E) const {
 }
 
 template <typename T>
-bool World::HasComponent(Entity E) const {
+bool World::HasComponent(FEntity E) const {
     auto key = std::type_index(typeid(T));
     auto it = _pools.find(key);
     if (it == _pools.end()) return false;
@@ -162,8 +150,8 @@ bool World::HasComponent(Entity E) const {
 }
 
 template <typename... Ts>
-std::vector<Entity> World::View() {
-    std::vector<Entity> result;
+std::vector<FEntity> World::View() {
+    std::vector<FEntity> result;
 
     // 找到最小的池以减少检查次数
     const IComponentPool* smallest = nullptr;
@@ -181,7 +169,7 @@ std::vector<Entity> World::View() {
 
     // 遍历最小池中的实体，检查是否拥有所有其他组件
     for (size_t i = 0; i < smallest->Size(); ++i) {
-        Entity e = smallest->OwnerAt(i);
+        FEntity e = smallest->OwnerAt(i);
         if ((GetPool<Ts>().Has(e) && ...)) {
             result.push_back(e);
         }

@@ -45,7 +45,7 @@ int main() {
     world.AddSystem(std::make_unique<DebugInfoSystem>());
 
     // 创建测试实体 1：坦克（地面单位）
-    ECS::Entity tank = world.CreateEntity();
+    ECS::FEntity tank = world.CreateEntity();
     world.AddComponent<ECS::TransformComponent>(tank, {100.0f, 200.0f, 0.0f});
     world.AddComponent<ECS::HealthComponent>(tank, {1000.0f, 1000.0f});
     world.AddComponent<ECS::TeamComponent>(
@@ -62,7 +62,7 @@ int main() {
     world.AddComponent<ECS::DomainComponent>(tank, {ECS::DomainType::Ground});
 
     // 创建测试实体 2：无人机（空中单位）
-    ECS::Entity drone = world.CreateEntity();
+    ECS::FEntity drone = world.CreateEntity();
     world.AddComponent<ECS::TransformComponent>(drone, {300.0f, 400.0f, 0.0f});
     world.AddComponent<ECS::HealthComponent>(drone, {20.0f, 20.0f});
     world.AddComponent<ECS::TeamComponent>(
@@ -78,7 +78,7 @@ int main() {
     world.AddComponent<ECS::CollisionComponent>(drone, {20.0f});
     world.AddComponent<ECS::DomainComponent>(drone, {ECS::DomainType::Air});
 
-    printf("[ECS] 存活实体: %zu\n", world.EntityCount());
+    printf("[ECS] 存活实体: %zu\n", world.AliveEntityCount());
 
     // 组件查询验证
     printf("[ECS] HasComponent 检查:\n");
@@ -103,7 +103,7 @@ int main() {
 
     // 销毁实体测试
     world.DestroyEntity(tank);
-    printf("[ECS] 销毁 tank 后存活: %zu\n", world.EntityCount());
+    printf("[ECS] 销毁 tank 后存活: %zu\n", world.AliveEntityCount());
     printf("[ECS] tank 是否存活: %d\n", world.IsAlive(tank));
     printf("[ECS] drone 是否存活: %d\n", world.IsAlive(drone));
 

@@ -1,44 +1,45 @@
 #include "World/World.h"
+#include "Entity/Entity.h"
 
 namespace Game {
 namespace ECS {
 
 World::World() {
     // 保留索引 0 为无效实体
-    _entities.emplace_back();  // EntityRecord{false, 0}
+    _EntityRecords.emplace_back();  // EntityRecord{false, 0}
 }
 
 World::~World() = default;
 
-Entity World::CreateEntity() {
+FEntity World::CreateEntity() {
     uint32_t index;
 
-    if (!_freeIndices.empty()) {
+    if (!_FreeIndices.empty()) {
         // 复用已释放的索引
-        index = _freeIndices.back();
-        _freeIndices.pop_back();
-        _entities[index].version++;              // 递增版本号，使旧引用失效
+        index = _FreeIndices.back();
+        _FreeIndices.pop_back();
+        _EntityRecords[index].Version++;              // 递增版本号，使旧引用失效
     } else {
         // 分配新索引
-        index = static_cast<uint32_t>(_entities.size());
+        index = static_cast<uint32_t>(_EntityRecords.size());
         if (index >= GetMaxEntities()) return GetInvalidEntity();  // 超出上限
-        _entities.emplace_back();                // alive=false, version=0
+        _EntityRecords.emplace_back();                // Alive=false, Version=0
     }
 
-    auto& record = _entities[index];
-    record.alive = true;
-    _aliveCount++;
+    auto& record = _EntityRecords[index];
+    record.Alive = true;
+    _AliveEntityCount++;
 
-    return MakeEntity(index, record.version);
+    return MakeEntity(index, record.Version);
 }
 
-void World::DestroyEntity(Entity e) {
+void World::DestroyEntity(FEntity e) {
     if (!IsAlive(e)) return;
 
-    uint32_t index = GetEntityIndex(e);
-    _entities[index].alive = false;
-    _aliveCount--;
-    _freeIndices.push_back(index);
+    FEntityIndex Index = GetEntityIndex(e);
+    _EntityRecords[Index].Alive = false;
+    _AliveEntityCount--;
+    _FreeIndices.push_back(Index);
 
     // 从所有组件池中移除该实体
     for (auto& [type, pool] : _pools) {
@@ -46,16 +47,16 @@ void World::DestroyEntity(Entity e) {
     }
 }
 
-bool World::IsAlive(Entity e) const {
+bool World::IsAlive(FEntity e) const {
     if (IsInvalidEntity(e)) return false;
-    uint32_t index = GetEntityIndex(e);
-    if (index >= _entities.size()) return false;
-    const auto& record = _entities[index];
-    return record.alive && (GetEntityVersion(e) == record.version);
+    FEntityIndex Index = GetEntityIndex(e);
+    if (Index >= _EntityRecords.size()) return false;
+    const auto& Record = _EntityRecords[Index];
+    return Record.Alive && (GetEntityVersion(e) == Record.Version);
 }
 
-size_t World::EntityCount() const {
-    return _aliveCount;
+size_t World::AliveEntityCount() const {
+    return _AliveEntityCount;
 }
 
 void World::AddSystem(std::unique_ptr<System> sys) {

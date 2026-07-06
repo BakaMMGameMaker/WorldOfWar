@@ -18,10 +18,10 @@ namespace ECS {
 class IComponentPool {
    public:
     virtual ~IComponentPool() = default;
-    virtual void Remove(Entity E) = 0;
-    virtual bool Has(Entity E) const = 0;
+    virtual void Remove(FEntity E) = 0;
+    virtual bool Has(FEntity E) const = 0;
     virtual size_t Size() const = 0;
-    virtual Entity OwnerAt(size_t Index) const = 0;
+    virtual FEntity OwnerAt(size_t Index) const = 0;
 };
 
 // ============================================================================
@@ -31,7 +31,7 @@ template <typename T>
 class ComponentPool : public IComponentPool {
    public:
     /// 添加组件（实体已有该类型组件时会覆盖）
-    T& Add(Entity E, const T& Component = T{}) {
+    T& Add(FEntity E, const T& Component = T{}) {
         auto it = _entityToIndex.find(E);
         if (it != _entityToIndex.end()) {
             _data[it->second] = Component;
@@ -45,7 +45,7 @@ class ComponentPool : public IComponentPool {
     }
 
     /// 移除实体上的该组件
-    void Remove(Entity E) override {
+    void Remove(FEntity E) override {
         auto it = _entityToIndex.find(E);
         if (it == _entityToIndex.end()) return;
 
@@ -64,21 +64,21 @@ class ComponentPool : public IComponentPool {
     }
 
     /// 获取组件指针（不存在时返回 nullptr）
-    T* Get(Entity E) {
+    T* Get(FEntity E) {
         auto it = _entityToIndex.find(E);
         if (it == _entityToIndex.end()) return nullptr;
         return &_data[it->second];
     }
 
     /// 获取组件指针（const 版本）
-    const T* Get(Entity E) const {
+    const T* Get(FEntity E) const {
         auto it = _entityToIndex.find(E);
         if (it == _entityToIndex.end()) return nullptr;
         return &_data[it->second];
     }
 
     /// 查询实体是否拥有该组件
-    bool Has(Entity E) const override {
+    bool Has(FEntity E) const override {
         return _entityToIndex.find(E) != _entityToIndex.end();
     }
 
@@ -86,7 +86,7 @@ class ComponentPool : public IComponentPool {
     size_t Size() const override { return _data.size(); }
 
     /// 获取第 Index 个组件的实体 ID
-    Entity OwnerAt(size_t Index) const override {
+    FEntity OwnerAt(size_t Index) const override {
         assert(Index < _owners.size());
         return _owners[Index];
     }
@@ -98,13 +98,13 @@ class ComponentPool : public IComponentPool {
     const T* end() const { return _data.data() + _data.size(); }
 
     /// 同时遍历实体与组件
-    const std::vector<Entity>& Owners() const { return _owners; }
+    const std::vector<FEntity>& Owners() const { return _owners; }
     const std::vector<T>& Data() const { return _data; }
 
    private:
     std::vector<T> _data;                      // 组件密集存储
-    std::vector<Entity> _owners;               // _data[i] 对应的实体
-    std::unordered_map<Entity, size_t> _entityToIndex;  // 实体 → 数组索引
+    std::vector<FEntity> _owners;               // _data[i] 对应的实体
+    std::unordered_map<FEntity, size_t> _entityToIndex;  // 实体 → 数组索引
 };
 
 }  // namespace ECS

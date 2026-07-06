@@ -23,7 +23,7 @@ enum class Side : uint8_t { Blue, Red, Neutral };
 
 struct TeamComponent {
     Side Team = Side::Neutral;
-    Entity Owner = GetInvalidEntity();  // 所属要塞/控制者实体
+    FEntity Owner = GetInvalidEntity();  // 所属要塞/控制者实体
 };
 
 // ============================================================================
