@@ -16,19 +16,13 @@ constexpr uint32_t VERSION_SHIFT = 24;
 constexpr uint32_t VERSION_MASK  = 0xFF;
 
 /// 从索引+版本构造实体 ID
-inline Entity MakeEntity(uint32_t Index, uint32_t Version) {
-    return (Index & INDEX_MASK) | ((Version & VERSION_MASK) << VERSION_SHIFT);
-}
+Entity MakeEntity(uint32_t Index, uint32_t Version);
 
 /// 提取实体索引
-inline uint32_t GetEntityIndex(Entity E) {
-    return E & INDEX_MASK;
-}
+uint32_t GetEntityIndex(Entity E);
 
 /// 提取实体版本
-inline uint32_t GetEntityVersion(Entity E) {
-    return (E >> VERSION_SHIFT) & VERSION_MASK;
-}
+uint32_t GetEntityVersion(Entity E);
 
 }  // namespace ECS
 }  // namespace Game

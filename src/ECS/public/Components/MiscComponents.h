@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "ECS/Core/Entity.h"
+#include "Entity/Entity.h"
 
 /// 特殊组件 — 子弹、粒子、要塞、选中、计时器等
 

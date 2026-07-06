@@ -2,7 +2,7 @@
 #include <cassert>
 #include <unordered_map>
 #include <vector>
-#include "Entity.h"
+#include "Entity/Entity.h"
 
 /// 通用组件池 — 稀疏集合实现
 /// - Add/Get/Has 均为 O(1)

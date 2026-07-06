@@ -1,13 +1,12 @@
 #pragma once
 #include <memory>
 #include <typeindex>
-#include <typeinfo>
 #include <unordered_map>
 #include <vector>
 
-#include "ComponentPool.h"
-#include "Entity.h"
-#include "System.h"
+#include "Components/ComponentPool.h"
+#include "Entity/Entity.h"
+#include "System/System.h"
 
 /// ECS 世界管理器 — 整个 ECS 框架的中央调度器
 ///

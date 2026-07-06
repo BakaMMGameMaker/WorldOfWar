@@ -1,4 +1,4 @@
-#include "ECS/Core/World.h"
+#include "World/World.h"
 
 namespace Game {
 namespace ECS {

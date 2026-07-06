@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "Types/RGB.h"
+#include "RGB.h"
 
 // Canvas — 帧缓冲管理与基本绘图操作
 // GFrameBuffer 在 Canvas/Canvas.cpp 匿名 namespace 中，外部不可直接访问

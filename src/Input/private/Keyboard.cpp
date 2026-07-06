@@ -1,4 +1,4 @@
-#include "Input/Keyboard.h"
+#include "Keyboard.h"
 
 namespace {
 

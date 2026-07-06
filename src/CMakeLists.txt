@@ -14,14 +14,19 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 # ============================================================================
 file(GLOB GAME_SOURCES
     "*.cpp"
-    "private/*.cpp"
-    "private/*/*.cpp"
-    "private/*/*/*.cpp"
+    "*/private/*.cpp"
+    "*/private/*/*.cpp"
 )
 add_executable(game ${GAME_SOURCES})
 
-# 公开头文件搜索路径
-target_include_directories(game PRIVATE public)
+# 公开头文件搜索路径（每个模块的 public/ 目录）
+target_include_directories(game PRIVATE
+    Types
+    Canvas/public
+    Input/public
+    ECS/public
+    Bridge/public
+)
 
 # Emscripten 产物后缀（生成 .html + .js + .wasm）
 set(CMAKE_EXECUTABLE_SUFFIX ".html")

@@ -1,9 +1,9 @@
 #include <emscripten.h>
 #include <cstdint>
-#include "Bridge/Canvas/Canvas.h"
 #include "Canvas/Canvas.h"
-#include "Canvas/CanvasConfig.h"
-#include "Types/RGB.h"
+#include "Canvas.h"
+#include "CanvasConfig.h"
+#include "RGB.h"
 
 // 渲染 + 帧缓冲桥接：JS → C++ Canvas 模块
 extern "C" {

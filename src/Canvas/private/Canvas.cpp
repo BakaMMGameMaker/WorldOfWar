@@ -1,5 +1,5 @@
-#include "Canvas/Canvas.h"
-#include "Canvas/CanvasConfig.h"
+#include "Canvas.h"
+#include "CanvasConfig.h"
 
 namespace {
 

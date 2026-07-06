@@ -1,6 +1,6 @@
 #include <emscripten.h>
-#include "Bridge/Input/Mouse.h"
 #include "Input/Mouse.h"
+#include "Mouse.h"
 
 // 鼠标事件桥接：JS → C++ 输入模块
 extern "C" {

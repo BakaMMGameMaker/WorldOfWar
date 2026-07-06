@@ -1,11 +1,10 @@
 #include <cstdio>
 
-#include "Canvas/CanvasConfig.h"
-#include "ECS/Core/World.h"
-#include "ECS/Components/BaseComponents.h"
-#include "ECS/Components/CombatComponents.h"
-#include "ECS/Components/MiscComponents.h"
-#include "ECS/Components/MotionComponents.h"
+#include "CanvasConfig.h"
+#include "World/World.h"
+#include "Components/BaseComponents.h"
+#include "Components/CombatComponents.h"
+#include "Components/MotionComponents.h"
 
 using namespace Game;
 

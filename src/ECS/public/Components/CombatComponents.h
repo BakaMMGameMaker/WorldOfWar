@@ -1,5 +1,5 @@
 #pragma once
-#include "ECS/Core/Entity.h"
+#include "Entity/Entity.h"
 
 /// 战斗相关组件 — 攻击属性、武器、炮塔、指令、状态机
 
