@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "Entity/Entity.h"
 
 /// 基础组件 — 几乎所有实体都需要的通用数据
 
@@ -22,7 +23,7 @@ enum class Side : uint8_t { Blue, Red, Neutral };
 
 struct TeamComponent {
     Side Team = Side::Neutral;
-    Entity Owner = INVALID_ENTITY;  // 所属要塞/控制者实体
+    Entity Owner = GetInvalidEntity();  // 所属要塞/控制者实体
 };
 
 // ============================================================================

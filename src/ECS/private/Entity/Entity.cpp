@@ -3,15 +3,21 @@
 namespace Game {
 namespace ECS {
 
-Entity MakeEntity(uint32_t Index, uint32_t Version) {
+namespace {
+    constexpr Entity   INDEX_MASK     = GetMaxEntities() - 1;
+    constexpr uint32_t VERSION_SHIFT  = 24;
+    constexpr uint32_t VERSION_MASK   = 0xFF;
+} // namespace
+
+Entity MakeEntity(EntityIndex Index, EntityVersion Version) {
     return (Index & INDEX_MASK) | ((Version & VERSION_MASK) << VERSION_SHIFT);
 }
 
-uint32_t GetEntityIndex(Entity E) {
+EntityIndex GetEntityIndex(Entity E) {
     return E & INDEX_MASK;
 }
 
-uint32_t GetEntityVersion(Entity E) {
+EntityVersion GetEntityVersion(Entity E) {
     return (E >> VERSION_SHIFT) & VERSION_MASK;
 }
 

@@ -41,7 +41,7 @@ enum class OrderType : uint8_t { None, Move, Attack, Follow };
 
 struct OrderComponent {
     OrderType Type = OrderType::None;
-    Entity Target = INVALID_ENTITY;  // Attack/Follow 的目标实体
+    Entity Target = GetInvalidEntity();  // Attack/Follow 的目标实体
     float TargetX = 0.0f;            // Move 的目标坐标
     float TargetY = 0.0f;
 };
@@ -51,7 +51,7 @@ struct OrderComponent {
 // ============================================================================
 struct AutoScanComponent {
     bool Enabled = false;
-    Entity AutoTarget = INVALID_ENTITY;  // 当前自动锁定目标
+    Entity AutoTarget = GetInvalidEntity();  // 当前自动锁定目标
 };
 
 // ============================================================================

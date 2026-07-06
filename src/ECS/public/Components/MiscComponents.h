@@ -11,7 +11,7 @@ namespace ECS {
 // ProjectileComponent — 弹丸/子弹
 // ============================================================================
 struct ProjectileComponent {
-    Entity Owner = INVALID_ENTITY;  // 发射者
+    Entity Owner = GetInvalidEntity();  // 发射者
     float Damage = 0.0f;
     float MaxRange = 0.0f;
     float StartX = 0.0f;           // 发射点 X（用于判断是否超出射程）
@@ -45,7 +45,7 @@ struct FortressComponent {
     float MaxAP = 0.0f;
     bool IsAI = false;            // 是否由 AI 控制
     FortressState State = FortressState::Normal;
-    Entity SelectedUnit = INVALID_ENTITY;  // 当前选中的己方单位
+    Entity SelectedUnit = GetInvalidEntity();  // 当前选中的己方单位
 };
 
 // ============================================================================

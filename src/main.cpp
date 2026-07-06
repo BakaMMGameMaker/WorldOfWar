@@ -49,7 +49,7 @@ int main() {
     world.AddComponent<ECS::TransformComponent>(tank, {100.0f, 200.0f, 0.0f});
     world.AddComponent<ECS::HealthComponent>(tank, {1000.0f, 1000.0f});
     world.AddComponent<ECS::TeamComponent>(
-        tank, {ECS::Side::Blue, ECS::INVALID_ENTITY});
+        tank, {ECS::Side::Blue, ECS::GetInvalidEntity()});
     world.AddComponent<ECS::GroundMotionComponent>(tank);
     world.AddComponent<ECS::MotionParamsComponent>(
         tank, {/*MaxSpeed=*/50.0f, /*Accel=*/10.0f, /*AngMaxSpeed=*/2.0f,
@@ -66,7 +66,7 @@ int main() {
     world.AddComponent<ECS::TransformComponent>(drone, {300.0f, 400.0f, 0.0f});
     world.AddComponent<ECS::HealthComponent>(drone, {20.0f, 20.0f});
     world.AddComponent<ECS::TeamComponent>(
-        drone, {ECS::Side::Blue, ECS::INVALID_ENTITY});
+        drone, {ECS::Side::Blue, ECS::GetInvalidEntity()});
     world.AddComponent<ECS::AirMotionComponent>(drone);
     world.AddComponent<ECS::MotionParamsComponent>(
         drone, {/*MaxSpeed=*/300.0f, /*Accel=*/400.0f,

@@ -7,22 +7,27 @@
 namespace Game {
 namespace ECS {
 
-using Entity = uint32_t;
+using Entity        = uint32_t;
+using EntityIndex   = uint32_t;
+using EntityVersion = uint32_t;
 
-constexpr Entity INVALID_ENTITY = 0;
-constexpr Entity MAX_ENTITIES    = 1u << 24;  // 约 1677 万
-constexpr Entity INDEX_MASK      = MAX_ENTITIES - 1;
-constexpr uint32_t VERSION_SHIFT = 24;
-constexpr uint32_t VERSION_MASK  = 0xFF;
+/// 最大实体数量（索引上限 = 2^24 ≈ 1677 万）
+inline constexpr uint32_t GetMaxEntities() { return 1u << 24; }
+
+/// 无效实体句柄（索引 0 保留）
+inline constexpr Entity GetInvalidEntity() { return 0; }
+
+/// 判断实体是否为无效句柄
+inline constexpr bool IsInvalidEntity(Entity E) { return E == GetInvalidEntity(); }
 
 /// 从索引+版本构造实体 ID
-Entity MakeEntity(uint32_t Index, uint32_t Version);
+Entity MakeEntity(EntityIndex Index, EntityVersion Version);
 
 /// 提取实体索引
-uint32_t GetEntityIndex(Entity E);
+EntityIndex GetEntityIndex(Entity E);
 
 /// 提取实体版本
-uint32_t GetEntityVersion(Entity E);
+EntityVersion GetEntityVersion(Entity E);
 
 }  // namespace ECS
 }  // namespace Game

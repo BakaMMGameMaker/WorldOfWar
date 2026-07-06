@@ -4,7 +4,7 @@ namespace Game {
 namespace ECS {
 
 World::World() {
-    // 保留索引 0 为 INVALID_ENTITY
+    // 保留索引 0 为无效实体
     _entities.emplace_back();  // EntityRecord{false, 0}
 }
 
@@ -21,7 +21,7 @@ Entity World::CreateEntity() {
     } else {
         // 分配新索引
         index = static_cast<uint32_t>(_entities.size());
-        if (index >= MAX_ENTITIES) return INVALID_ENTITY;  // 超出上限
+        if (index >= GetMaxEntities()) return GetInvalidEntity();  // 超出上限
         _entities.emplace_back();                // alive=false, version=0
     }
 
@@ -47,7 +47,7 @@ void World::DestroyEntity(Entity e) {
 }
 
 bool World::IsAlive(Entity e) const {
-    if (e == INVALID_ENTITY) return false;
+    if (IsInvalidEntity(e)) return false;
     uint32_t index = GetEntityIndex(e);
     if (index >= _entities.size()) return false;
     const auto& record = _entities[index];
