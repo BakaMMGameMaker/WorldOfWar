@@ -1,57 +1,64 @@
 #include "Canvas.h"
 #include "CanvasConfig.h"
+#include <cstdint>
+
+namespace game {
+namespace canvas {
 
 namespace {
 
 // 帧缓冲（CPU 端 RGBA 像素数组，JS 侧通过 HEAPU8 零拷贝读取）
-uint32_t GFrameBuffer[Game::Canvas::GetCanvasWidth() *
-                      Game::Canvas::GetCanvasHeight()];
+std::uint32_t g_frame[game::canvas::get_canvas_width() *
+                      game::canvas::get_canvas_height()];
 
 } // namespace
 
-namespace Game {
-namespace Canvas {
-
-uint8_t* GetPixels() {
-    return reinterpret_cast<uint8_t*>(GFrameBuffer);
+uint8_t* get_pixels() {
+    return reinterpret_cast<uint8_t*>(g_frame);
 }
 
-void Clear(const Types::RGB Color) {
-    constexpr int W = GetCanvasWidth();
-    constexpr int H = GetCanvasHeight();
-    uint32_t c = (255u << 24) | ((uint32_t)Color.b << 16) | ((uint32_t)Color.g << 8) | Color.r;
+void clear(color::rgb rgb) {
+    constexpr int W = get_canvas_width();
+    constexpr int H = get_canvas_height();
+    std::uint32_t c = (255u << 24) | (static_cast<std::uint32_t>(rgb.b) << 16) | (static_cast<std::uint32_t>(rgb.g) << 8) | rgb.r;
     for (int i = 0; i < W * H; ++i)
-        GFrameBuffer[i] = c;
+    {
+        g_frame[i] = c;
+    }
 }
 
-void SetPixel(const int X, const int Y, const Types::RGB Color) {
-    constexpr int W = GetCanvasWidth();
-    constexpr int H = GetCanvasHeight();
-    if ((unsigned)X >= (unsigned)W || (unsigned)Y >= (unsigned)H) return;
-    GFrameBuffer[Y * W + X] = (255u << 24) | ((uint32_t)Color.b << 16) | ((uint32_t)Color.g << 8) | Color.r;
+void set_pixels(int x, int y, color::rgb rgb) {
+    constexpr int W = get_canvas_width();
+    constexpr int H = get_canvas_height();
+    if (static_cast<unsigned>(x) >= static_cast<unsigned>(W) || static_cast<unsigned>(y) >= static_cast<unsigned>(H)) return;
+    g_frame[y * W + x] = (255u << 24) | (static_cast<std::uint32_t>(rgb.b) << 16) | (static_cast<std::uint32_t>(rgb.g) << 8) | rgb.r;
 }
 
-void FillRect(const int X, const int Y, const int W, const int H, const Types::RGB Color) {
-    constexpr int CW = GetCanvasWidth();
-    constexpr int CH = GetCanvasHeight();
-    int x0 = X < 0 ? 0 : X;
-    int y0 = Y < 0 ? 0 : Y;
-    int x1 = X + W > CW ? CW : X + W;
-    int y1 = Y + H > CH ? CH : Y + H;
+void fill_rect(int x, int y, int w, int h, color::rgb rgb) {
+    constexpr int CW = get_canvas_width();
+    constexpr int CH = get_canvas_height();
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = x + w > CW ? CW : x + w;
+    int y1 = y + h > CH ? CH : y + h;
     if (x0 >= CW || y0 >= CH || x1 <= 0 || y1 <= 0) return;
-    uint32_t c = (255u << 24) | ((uint32_t)Color.b << 16) | ((uint32_t)Color.g << 8) | Color.r;
+    std::uint32_t c = (255u << 24) | (static_cast<std::uint32_t>(rgb.b) << 16) | (static_cast<std::uint32_t>(rgb.g) << 8) | rgb.r;
     for (int iy = y0; iy < y1; ++iy)
+    {
         for (int ix = x0; ix < x1; ++ix)
-            GFrameBuffer[iy * CW + ix] = c;
+        {
+            g_frame[iy * CW + ix] = c;
+        }
+    }
 }
 
-void DrawRectBorder(const int X, const int Y, const int W, const int H, const int Thickness,
-                    const Types::RGB Color) {
-    FillRect(X, Y, W, Thickness, Color);                     // 上
-    FillRect(X, Y + H - Thickness, W, Thickness, Color);    // 下
-    FillRect(X, Y, Thickness, H, Color);                     // 左
-    FillRect(X + W - Thickness, Y, Thickness, H, Color);    // 右
+void draw_rect_border(int x, int y, int w, int h, int thickness,
+                    color::rgb rgb) {
+    fill_rect(x, y, w, thickness, rgb);                     // 上
+    fill_rect(x, y + h - thickness, w, thickness, rgb);  // 下
+    fill_rect(x, y, thickness, h, rgb);                     // 左
+    fill_rect(x + w - thickness, y, thickness, h, rgb);  // 右
 }
 
-} // namespace Canvas
-} // namespace Game
+} // namespace canvas
+} // namespace game

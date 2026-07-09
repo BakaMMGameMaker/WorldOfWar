@@ -1,21 +1,21 @@
 #pragma once
 
 // Mouse — 鼠标状态管理
-// GMouseX/Y、GMouseDown 在 Input/Mouse.cpp 匿名 namespace 中
+// g_mouse_x/y、g_mouse_down 在 Input/Mouse.cpp 匿名 namespace 中
 
-namespace Game {
-namespace Input {
+namespace game {
+namespace input {
 
 // 光标位置
-int GetMouseX();
-int GetMouseY();
+int get_mouse_x();
+int get_mouse_y();
 
 // 鼠标按键状态（button: 0=左 1=中 2=右）
-bool IsMouseDown(int Button);
+bool is_mouse_down(int button);
 
 // 写入接口（JS 桥接调用）
-void SetMousePos(int X, int Y);
-void SetMouseButton(int Button, bool Down);
+void set_mouse_pos(int x, int y);
+void set_mouse_button(int button, bool down);
 
-} // namespace Input
-} // namespace Game
+} // namespace input
+} // namespace game

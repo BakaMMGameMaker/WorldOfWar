@@ -7,13 +7,13 @@ extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 void onMouseMove(int x, int y) {
-    Game::Input::SetMousePos(x, y);
+    game::input::set_mouse_pos(x, y);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void onMouseButton(int x, int y, int button, int down) {
-    Game::Input::SetMouseButton(button, down != 0);
-    Game::Input::SetMousePos(x, y);
+    game::input::set_mouse_button(button, down != 0);
+    game::input::set_mouse_pos(x, y);
 }
 
 EMSCRIPTEN_KEEPALIVE

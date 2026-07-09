@@ -1,111 +1,112 @@
 #pragma once
 #include <cassert>
+#include <cstddef>
 #include <unordered_map>
 #include <vector>
 #include "Entity/Entity.h"
 
 /// 通用组件池 — 稀疏集合实现
 /// - Add/Get/Has 均为 O(1)
-/// - 迭代时数据在连续内存中（缓存友好）
+/// - 迭代时数据在连续内存中
 /// - IComponentPool 提供类型擦除接口，供 World 统一管理
 
-namespace Game {
-namespace ECS {
+namespace game {
+namespace ecs {
 
-// ============================================================================
-// 类型擦除基类 — World 通过此接口管理不同类型的组件池
-// ============================================================================
 class IComponentPool {
-   public:
+public:
     virtual ~IComponentPool() = default;
-    virtual void Remove(FEntity E) = 0;
-    virtual bool Has(FEntity E) const = 0;
-    virtual size_t Size() const = 0;
-    virtual FEntity OwnerAt(size_t Index) const = 0;
+    virtual void remove_component_for(entity_t e) = 0;
+    virtual bool has_component(entity_t e) const = 0;
+    virtual size_t size() const = 0;
+    virtual entity_t owner_at(size_t index) const = 0;
 };
 
-// ============================================================================
 // 具体组件池模板
-// ============================================================================
-template <typename T>
-class ComponentPool : public IComponentPool {
-   public:
+template <typename ComponentType>
+class component_pool : public IComponentPool {
+public:
     /// 添加组件（实体已有该类型组件时会覆盖）
-    T& Add(FEntity E, const T& Component = T{}) {
-        auto it = _entityToIndex.find(E);
-        if (it != _entityToIndex.end()) {
-            _data[it->second] = Component;
-            return _data[it->second];
+    ComponentType& add_component_for(entity_t e, const ComponentType& component = {}) {
+
+        // 返回 entity 已持有的该组件
+        auto it = entity_to_component_index_.find(e);
+        if (it != entity_to_component_index_.end()) {
+            components_[it->second] = component;
+            return components_[it->second];
         }
-        size_t idx = _data.size();
-        _data.push_back(Component);
-        _owners.push_back(E);
-        _entityToIndex[E] = idx;
-        return _data[idx];
+
+        // entity 无该组件，为 entity 添加该组件
+        size_t index = components_.size();
+        components_.push_back(component);
+        component_index_to_entity_.push_back(e);
+        entity_to_component_index_[e] = index;
+        return components_[index];
     }
 
     /// 移除实体上的该组件
-    void Remove(FEntity E) override {
-        auto it = _entityToIndex.find(E);
-        if (it == _entityToIndex.end()) return;
+    void remove_component_for(entity_t e) override {
+        auto it = entity_to_component_index_.find(e);
+        if (it == entity_to_component_index_.end()) return;
 
-        size_t idx = it->second;
-        size_t last = _data.size() - 1;
+        size_t removed_component_index = it->second;
+        size_t last_component_index = components_.size() - 1;
 
-        // swap-and-pop：保持数组紧密
-        if (idx != last) {
-            _data[idx] = std::move(_data[last]);
-            _owners[idx] = _owners[last];
-            _entityToIndex[_owners[idx]] = idx;
+        // swap-and-pop
+        if (removed_component_index != last_component_index) {
+            components_[removed_component_index] = std::move(components_[last_component_index]);
+            component_index_to_entity_[removed_component_index] = component_index_to_entity_[last_component_index];
+            entity_to_component_index_[component_index_to_entity_[removed_component_index]] = removed_component_index;
         }
-        _data.pop_back();
-        _owners.pop_back();
-        _entityToIndex.erase(it);
+
+        components_.pop_back();
+        component_index_to_entity_.pop_back();
+        entity_to_component_index_.erase(it);
     }
 
     /// 获取组件指针（不存在时返回 nullptr）
-    T* Get(FEntity E) {
-        auto it = _entityToIndex.find(E);
-        if (it == _entityToIndex.end()) return nullptr;
-        return &_data[it->second];
+    ComponentType* get_component_of(entity_t e) {
+        auto it = entity_to_component_index_.find(e);
+        if (it == entity_to_component_index_.end()) return nullptr;
+        return &components_[it->second];
     }
 
     /// 获取组件指针（const 版本）
-    const T* Get(FEntity E) const {
-        auto it = _entityToIndex.find(E);
-        if (it == _entityToIndex.end()) return nullptr;
-        return &_data[it->second];
+    const ComponentType* get_component_of(entity_t e) const {
+        auto it = entity_to_component_index_.find(e);
+        if (it == entity_to_component_index_.end()) return nullptr;
+        return &components_[it->second];
     }
 
     /// 查询实体是否拥有该组件
-    bool Has(FEntity E) const override {
-        return _entityToIndex.find(E) != _entityToIndex.end();
+    bool has_component(entity_t e) const override {
+        return entity_to_component_index_.find(e) != entity_to_component_index_.end();
     }
 
     /// 池中组件数量
-    size_t Size() const override { return _data.size(); }
+    size_t size() const override { return components_.size(); }
 
-    /// 获取第 Index 个组件的实体 ID
-    FEntity OwnerAt(size_t Index) const override {
-        assert(Index < _owners.size());
-        return _owners[Index];
+    /// 获取第 index 个组件的实体
+    entity_t owner_at(size_t index) const override {
+        assert(index < component_index_to_entity_.size());
+        return component_index_to_entity_[index];
     }
 
-    /// 迭代支持（直接遍历组件数组）
-    T* begin() { return _data.data(); }
-    T* end() { return _data.data() + _data.size(); }
-    const T* begin() const { return _data.data(); }
-    const T* end() const { return _data.data() + _data.size(); }
+    /// 迭代
+    ComponentType* begin() { return components_.data(); }
+    ComponentType* end() { return components_.data() + components_.size(); }
+    const ComponentType* begin() const { return components_.data(); }
+    const ComponentType* end() const { return components_.data() + components_.size(); }
 
     /// 同时遍历实体与组件
-    const std::vector<FEntity>& Owners() const { return _owners; }
-    const std::vector<T>& Data() const { return _data; }
+    const std::vector<entity_t>& owners() const { return component_index_to_entity_; }
+    const std::vector<ComponentType>& data() const { return components_; }
 
    private:
-    std::vector<T> _data;                      // 组件密集存储
-    std::vector<FEntity> _owners;               // _data[i] 对应的实体
-    std::unordered_map<FEntity, size_t> _entityToIndex;  // 实体 → 数组索引
+    std::vector<ComponentType> components_;                      // 组件密集存储
+    std::vector<entity_t> component_index_to_entity_;               // components_[i] 对应的实体
+    std::unordered_map<entity_t, size_t> entity_to_component_index_;  // 实体 → 数组索引 todo: 改 sparse
 };
 
-}  // namespace ECS
-}  // namespace Game
+}  // namespace ecs
+}  // namespace game

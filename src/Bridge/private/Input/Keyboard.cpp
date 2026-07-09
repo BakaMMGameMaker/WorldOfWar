@@ -7,7 +7,7 @@ extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 void onKeyEvent(int keyCode, int down) {
-    Game::Input::SetKeyState(keyCode, down != 0);
+    game::input::set_key_state(keyCode, down != 0);
 }
 
 } // extern "C"

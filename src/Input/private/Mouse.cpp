@@ -3,31 +3,31 @@
 namespace {
 
 // 鼠标状态
-int  GMouseX = 0, GMouseY = 0;     // 当前光标位置（canvas 坐标）
-bool GMouseDown[3] = {};            // 按键状态：[0]=左 [1]=中 [2]=右
+int  g_mouse_x = 0, g_mouse_y = 0;     // 当前光标位置（canvas 坐标）
+bool g_mouse_down[3] = {};            // 按键状态：[0]=左 [1]=中 [2]=右
 
 } // namespace
 
-namespace Game {
-namespace Input {
+namespace game {
+namespace input {
 
-int GetMouseX() { return GMouseX; }
-int GetMouseY() { return GMouseY; }
+int get_mouse_x() { return g_mouse_x; }
+int get_mouse_y() { return g_mouse_y; }
 
-bool IsMouseDown(const int Button) {
-    if ((unsigned)Button >= 3u) return false;
-    return GMouseDown[Button];
+bool is_mouse_down(int button) {
+    if (static_cast<unsigned>(button) >= 3u) return false;
+    return g_mouse_down[button];
 }
 
-void SetMousePos(const int X, const int Y) {
-    GMouseX = X;
-    GMouseY = Y;
+void set_mouse_pos(int x, int y) {
+    g_mouse_x = x;
+    g_mouse_y = y;
 }
 
-void SetMouseButton(const int Button, const bool Down) {
-    if ((unsigned)Button >= 3u) return;
-    GMouseDown[Button] = Down;
+void set_mouse_button(int button, bool down) {
+    if (static_cast<unsigned>(button) >= 3u) return;
+    g_mouse_down[button] = down;
 }
 
-} // namespace Input
-} // namespace Game
+} // namespace input
+} // namespace game

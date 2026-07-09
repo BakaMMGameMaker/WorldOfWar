@@ -5,19 +5,19 @@
 
 namespace {
 
-inline constexpr int kCanvasWidth  = 1200;
-inline constexpr int kCanvasHeight = 800;
-inline constexpr int kGridSize     = 100;
+constexpr int k_canvas_width  = 1200;
+constexpr int k_canvas_height = 800;
+constexpr int k_grid_size     = 100;
 
 } // namespace
 
-namespace Game {
-namespace Canvas {
+namespace game {
+namespace canvas {
 
-// getter（constexpr，编译期可求值）
-constexpr int GetCanvasWidth()  { return kCanvasWidth; }
-constexpr int GetCanvasHeight() { return kCanvasHeight; }
-constexpr int GetGridSize()     { return kGridSize; }
+// getter
+inline constexpr int get_canvas_width()  { return k_canvas_width; }
+inline constexpr int get_canvas_height() { return k_canvas_height; }
+inline constexpr int get_grid_size()     { return k_grid_size; }
 
-} // namespace Canvas
-} // namespace Game
+} // namespace canvas
+} // namespace game

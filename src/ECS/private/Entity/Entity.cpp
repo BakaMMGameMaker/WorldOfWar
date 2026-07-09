@@ -1,25 +1,25 @@
 #include "Entity/Entity.h"
 
-namespace Game {
-namespace ECS {
+namespace game {
+namespace ecs {
 
 namespace {
-    constexpr FEntity   INDEX_MASK     = GetMaxEntities() - 1;
+    constexpr entity_t INDEX_MASK     = get_max_entities() - 1;
     constexpr uint32_t VERSION_SHIFT  = 24;
     constexpr uint32_t VERSION_MASK   = 0xFF;
 } // namespace
 
-FEntity MakeEntity(FEntityIndex Index, FEntityVersion Version) {
-    return (Index & INDEX_MASK) | ((Version & VERSION_MASK) << VERSION_SHIFT);
+entity_t make_entity_with(entity_index_t index, entity_version_t version) {
+    return (index & INDEX_MASK) | ((version & VERSION_MASK) << VERSION_SHIFT);
 }
 
-FEntityIndex GetEntityIndex(FEntity E) {
-    return E & INDEX_MASK;
+entity_index_t get_entity_index(entity_t e) {
+    return e & INDEX_MASK;
 }
 
-FEntityVersion GetEntityVersion(FEntity E) {
-    return (E >> VERSION_SHIFT) & VERSION_MASK;
+entity_version_t get_entity_version(entity_t e) {
+    return (e >> VERSION_SHIFT) & VERSION_MASK;
 }
 
-}  // namespace ECS
-}  // namespace Game
+}  // namespace ecs
+}  // namespace game

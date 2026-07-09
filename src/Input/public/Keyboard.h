@@ -1,16 +1,16 @@
 #pragma once
 
 // Keyboard — 按键状态管理
-// GKeyDown 在 Input/Keyboard.cpp 匿名 namespace 中，外部不可直接访问
+// g_key_down 在 Input/Keyboard.cpp 匿名 namespace 中
 
-namespace Game {
-namespace Input {
+namespace game {
+namespace input {
 
 // 查询按键是否按下（keyCode 范围 0–255）
-bool IsKeyDown(int KeyCode);
+bool is_key_down(int key_code);
 
 // 写入按键状态（JS 桥接调用）
-void SetKeyState(int KeyCode, bool Down);
+void set_key_state(int key_code, bool down);
 
-} // namespace Input
-} // namespace Game
+} // namespace input
+} // namespace game

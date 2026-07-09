@@ -1,26 +1,26 @@
 #pragma once
 
 /// 系统基类
-/// 每个 System 对应一种游戏逻辑（移动、战斗、渲染等）
-/// 通过 World::AddSystem 注册后，每帧按注册顺序调用 Update
+/// 每个 system 对应一种游戏逻辑（移动、战斗、渲染等）
+/// 通过 world::add_system 注册后，每帧按注册顺序调用 Update
 
-namespace Game {
-namespace ECS {
+namespace game {
+namespace ecs {
 
-class World;
+class world;
 
-class System {
+class system {
    public:
-    virtual ~System() = default;
+    virtual ~system() = default;
 
     /// 系统首次注册时调用（可选重写，用于初始化）
-    virtual void OnCreate(World& WorldRef) {}
+    virtual void on_create(world& w) {}
 
     /// 每帧逻辑更新
-    /// @param WorldRef 世界引用，用于查询/修改实体与组件
-    /// @param DeltaTime 帧间隔（秒）
-    virtual void Update(World& WorldRef, float DeltaTime) = 0;
+    /// @param w 世界引用，用于查询/修改实体与组件
+    /// @param dt 帧间隔（秒）
+    virtual void update(world& w, float dt) = 0;
 };
 
-}  // namespace ECS
-}  // namespace Game
+}  // namespace ecs
+}  // namespace game

@@ -25,11 +25,11 @@
 
 轻量级 ECS，不依赖第三方库：
 
-- FEntity = uint32_t 句柄，含版本号防悬空
-- Component = POD 结构体（18 种），覆盖 game.js 全部实体
-- ComponentPool\<T\> = 稀疏集合，O(1) 增删查 + 缓存友好迭代
-- System = 纯逻辑类，通过 `World::View<Ts...>()` 多组件查询
-- World = 中央调度器，管理实体/组件生命周期与系统按序更新
+- entity_t = uint32_t 句柄，含版本号防悬空
+- Component = POD 结构体（18 种，snake_case 命名），覆盖 game.js 全部实体
+- component_pool\<T\> = 稀疏集合，O(1) 增删查 + 缓存友好迭代
+- system = 纯逻辑类，通过 `world::view<Ts...>()` 多组件查询
+- world = 中央调度器，管理实体/组件生命周期与系统按序更新
 
 详见 [CLAUDE.md](CLAUDE.md) 的 ECS 框架章节。
 

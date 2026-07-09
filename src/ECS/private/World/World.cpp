@@ -1,86 +1,86 @@
 #include "World/World.h"
 #include "Entity/Entity.h"
 
-namespace Game {
-namespace ECS {
+namespace game {
+namespace ecs {
 
-World::World() {
+world::world() {
     // 保留索引 0 为无效实体
-    _EntityRecords.emplace_back();  // EntityRecord{false, 0}
+    entity_records_.emplace_back();
 }
 
-World::~World() = default;
+world::~world() = default;
 
-FEntity World::CreateEntity() {
-    uint32_t index;
+entity_t world::create_entity() {
+    entity_index_t entity_index;
 
-    if (!_FreeIndices.empty()) {
+    if (!free_entity_indices_.empty()) {
         // 复用已释放的索引
-        index = _FreeIndices.back();
-        _FreeIndices.pop_back();
-        _EntityRecords[index].Version++;              // 递增版本号，使旧引用失效
+        entity_index = free_entity_indices_.back();
+        free_entity_indices_.pop_back();
+        entity_records_[entity_index].increase_version();  // 递增版本号，使旧引用失效
     } else {
         // 分配新索引
-        index = static_cast<uint32_t>(_EntityRecords.size());
-        if (index >= GetMaxEntities()) return GetInvalidEntity();  // 超出上限
-        _EntityRecords.emplace_back();                // Alive=false, Version=0
+        entity_index = static_cast<entity_index_t>(entity_records_.size());
+        if (entity_index >= get_max_entities()) return get_invalid_entity();  // 超出上限
+        entity_records_.emplace_back();  // alive=false, version=0
     }
 
-    auto& record = _EntityRecords[index];
-    record.Alive = true;
-    _AliveEntityCount++;
+    entity_record& record = entity_records_[entity_index];
+    record.set_alive(true);
+    alive_entity_count_++;
 
-    return MakeEntity(index, record.Version);
+    return make_entity_with(entity_index, record.get_version());
 }
 
-void World::DestroyEntity(FEntity e) {
-    if (!IsAlive(e)) return;
+void world::destroy_entity(entity_t entity) {
+    if (!is_alive(entity)) return;
 
-    FEntityIndex Index = GetEntityIndex(e);
-    _EntityRecords[Index].Alive = false;
-    _AliveEntityCount--;
-    _FreeIndices.push_back(Index);
+    entity_index_t idx = get_entity_index(entity);
+    entity_records_[idx].set_alive(false);
+    alive_entity_count_--;
+    free_entity_indices_.push_back(idx);
 
     // 从所有组件池中移除该实体
-    for (auto& [type, pool] : _pools) {
-        pool->Remove(e);
+    for (auto& [type, pool] : component_pools_) {
+        pool->remove_component_for(entity);
     }
 }
 
-bool World::IsAlive(FEntity e) const {
-    if (IsInvalidEntity(e)) return false;
-    FEntityIndex Index = GetEntityIndex(e);
-    if (Index >= _EntityRecords.size()) return false;
-    const auto& Record = _EntityRecords[Index];
-    return Record.Alive && (GetEntityVersion(e) == Record.Version);
+bool world::is_alive(entity_t entity) const {
+    if (is_invalid_entity(entity)) return false;
+    entity_index_t idx = get_entity_index(entity);
+    if (idx >= entity_records_.size()) return false;
+    const auto& record = entity_records_[idx];
+    return record.is_alive() && (get_entity_version(entity) == record.get_version());
 }
 
-size_t World::AliveEntityCount() const {
-    return _AliveEntityCount;
+entity_count_t world::get_alive_entity_count() const {
+    return alive_entity_count_;
 }
 
-void World::AddSystem(std::unique_ptr<System> sys) {
+void world::add_system(std::unique_ptr<system> sys) {
     if (!sys) return;
-    _systems.push_back(std::move(sys));
-    _systemsDirty = true;
+    pending_systems_.push_back(std::move(sys));
+    has_pending_systems_ = true;
 }
 
-void World::FlushPendingSystems() {
-    if (!_systemsDirty) return;
-    for (auto& sys : _systems) {
-        sys->OnCreate(*this);
-        _activeSystems.push_back(sys.get());
+void world::flush_pending_systems() {
+    if (!has_pending_systems_) return;
+    for (auto& sys : pending_systems_) {
+        sys->on_create(*this);
+        active_systems_.push_back(sys.get());
     }
-    _systems.clear();
-    _systemsDirty = false;
+    pending_systems_.clear();
+    has_pending_systems_ = false;
 }
 
-void World::Update(float dt) {
-    FlushPendingSystems();
-    for (auto* sys : _activeSystems) {
-        sys->Update(*this, dt);
+void world::update(float dt) {
+    flush_pending_systems();
+    for (auto* sys : active_systems_) {
+        sys->update(*this, dt);
     }
 }
 
-}  // namespace ECS
-}  // namespace Game
+}  // namespace ecs
+}  // namespace game

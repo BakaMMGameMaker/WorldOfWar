@@ -1,15 +1,15 @@
 #pragma once
+
 #include <cstdint>
-
-// 基础类型定义
-
-namespace Game {
-namespace Types {
+namespace game {
+namespace color {
 
 /// RGB 颜色（各通道 0–255）
-struct RGB {
-    uint8_t r, g, b;
+struct rgb {
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
 };
 
-} // namespace Types
-} // namespace Game
+} // namespace color
+} // namespace game

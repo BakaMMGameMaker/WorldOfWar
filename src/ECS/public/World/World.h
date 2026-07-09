@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <typeindex>
 #include <unordered_map>
@@ -8,7 +9,7 @@
 #include "Entity/Entity.h"
 #include "System/System.h"
 
-/// ECS 世界管理器 — 整个 ECS 框架的中央调度器
+/// ECS 世界
 ///
 /// 职责：
 /// - 实体生命周期管理（创建/销毁）
@@ -16,166 +17,176 @@
 /// - 多组件联合查询 View<Ts...>()
 /// - 系统注册与按序调度 Update()
 
-namespace Game {
-namespace ECS {
+namespace game {
+namespace ecs {
 
-class World {
+class world {
 public:
-    World();
-    ~World();
+    world();
+    ~world();
 
     // 实体管理
 
     /// 创建新实体，返回实体句柄
-    FEntity CreateEntity();
+    entity_t create_entity();
 
     /// 销毁实体，同时移除其所有组件
-    void DestroyEntity(FEntity E);
+    void destroy_entity(entity_t entity);
 
     /// 检查实体是否存活
-    bool IsAlive(FEntity E) const;
+    bool is_alive(entity_t entity) const;
 
     /// 当前存活实体数量
-    size_t AliveEntityCount() const;
+    entity_count_t get_alive_entity_count() const;
 
     // 组件操作
 
     /// 为实体添加组件（已有同类型则覆盖），返回组件引用
-    template <typename T>
-    T& AddComponent(FEntity E, const T& Component = T{});
+    template <typename ComponentType>
+    ComponentType& add_component(entity_t entity, const ComponentType& component = ComponentType{});
 
     /// 移除实体上的指定类型组件
-    template <typename T>
-    void RemoveComponent(FEntity E);
+    template <typename ComponentType>
+    void remove_component(entity_t entity);
 
     /// 获取实体上的组件指针（不存在返回 nullptr）
-    template <typename T>
-    T* GetComponent(FEntity E);
+    template <typename ComponentType>
+    ComponentType* get_component(entity_t entity);
 
     /// const 版本
-    template <typename T>
-    const T* GetComponent(FEntity E) const;
+    template <typename ComponentType>
+    const ComponentType* get_component(entity_t entity) const;
 
     /// 检查实体是否拥有指定类型组件
-    template <typename T>
-    bool HasComponent(FEntity E) const;
+    template <typename ComponentType>
+    bool has_component(entity_t entity) const;
 
     // 多组件查询
 
     /// 返回拥有所有指定组件的实体列表
-    /// 示例: auto entities = world.View<TransformComponent, HealthComponent>();
-    template <typename... Ts>
-    std::vector<FEntity> View();
+    /// 示例: auto entities = w.view<transform, health>();
+    template <typename... ComponentTypes>
+    std::vector<entity_t> view();
 
     // 系统管理
 
     /// 注册系统（World 持有所有权）
-    void AddSystem(std::unique_ptr<System> Sys);
+    void add_system(std::unique_ptr<system> sys);
 
     /// 按注册顺序执行所有系统的 Update
-    void Update(float DeltaTime);
+    void update(float delta_time);
 
     // 组件池访问（内部使用）
     template <typename T>
-    ComponentPool<T>& GetPool();
+    component_pool<T>& get_component_pool();
 
 private:
     /// 将系统首次注册时的 OnCreate 延迟到此处执行
-    void FlushPendingSystems();
+    void flush_pending_systems();
 
     // —— 实体管理 ——
-    struct EntityRecord {
-        bool Alive = false;
-        FEntityVersion Version = 0;
+    struct entity_record {
+    public:
+        void set_alive(bool alive) { alive_ = alive; }
+        bool is_alive() const { return alive_; }
+        void increase_version() { version_++; }
+        entity_version_t get_version() const { return version_; }
+    private:
+        bool alive_ = false;
+        entity_version_t version_ = 0;
     };
 
-    std::vector<EntityRecord> _EntityRecords;  // 索引 → 实体记录
-    std::vector<uint32_t> _FreeIndices;        // 空闲索引列表
-    size_t _AliveEntityCount = 0;              // 存活实体数量
+    using entity_records_t = std::vector<entity_record>;
+    entity_records_t entity_records_;            // 索引 → 实体记录
+
+    using free_entity_indices_t = std::vector<entity_index_t>;
+    free_entity_indices_t free_entity_indices_;  // 空闲索引列表
+
+    entity_count_t alive_entity_count_ = 0;      // 存活实体数量
 
     // —— 组件存储 ——
     // 每个组件类型一个池，按 type_index 索引
-    std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>> _pools;
+    std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>> component_pools_;
 
     // —— 系统调度 ——
-    std::vector<std::unique_ptr<System>> _systems;
-    std::vector<System*> _activeSystems;   // OnCreate 已调用的系统
-    bool _systemsDirty = false;            // 是否有待初始化系统
+    std::vector<std::unique_ptr<system>> pending_systems_;
+    std::vector<system*> active_systems_;             // on_create 已调用的系统
+    bool has_pending_systems_ = false;           // 是否有待初始化系统
 };
 
 // 模板实现
-template <typename T>
-ComponentPool<T>& World::GetPool() {
-    auto key = std::type_index(typeid(T));
-    auto it = _pools.find(key);
-    if (it == _pools.end()) {
-        auto pool = std::make_unique<ComponentPool<T>>();
-        auto* ptr = pool.get();
-        _pools[key] = std::move(pool);
+template <typename ComponentType>
+component_pool<ComponentType>& world::get_component_pool() {
+    auto key = std::type_index(typeid(ComponentType));
+    auto it = component_pools_.find(key);
+    if (it == component_pools_.end()) {
+        auto new_pool = std::make_unique<component_pool<ComponentType>>();
+        auto* ptr = new_pool.get();
+        component_pools_[key] = std::move(new_pool);
         return *ptr;
     }
-    return static_cast<ComponentPool<T>&>(*it->second);
+    return static_cast<component_pool<ComponentType>&>(*it->second);
 }
 
-template <typename T>
-T& World::AddComponent(FEntity E, const T& Component) {
-    return GetPool<T>().Add(E, Component);
+template <typename ComponentType>
+ComponentType& world::add_component(entity_t entity, const ComponentType& component) {
+    return get_component_pool<ComponentType>().add_component_for(entity, component);
 }
 
-template <typename T>
-void World::RemoveComponent(FEntity E) {
-    GetPool<T>().Remove(E);
+template <typename ComponentType>
+void world::remove_component(entity_t entity) {
+    get_component_pool<ComponentType>().remove_component_for(entity);
 }
 
-template <typename T>
-T* World::GetComponent(FEntity E) {
-    return GetPool<T>().Get(E);
+template <typename ComponentType>
+ComponentType* world::get_component(entity_t entity) {
+    return get_component_pool<ComponentType>().get_component_of(entity);
 }
 
-template <typename T>
-const T* World::GetComponent(FEntity E) const {
-    // const 版本需要 const_cast 来延迟创建池（只在已存在时查询）
-    auto key = std::type_index(typeid(T));
-    auto it = _pools.find(key);
-    if (it == _pools.end()) return nullptr;
-    return static_cast<const ComponentPool<T>*>(it->second.get())->Get(E);
+template <typename ComponentType>
+const ComponentType* world::get_component(entity_t entity) const {
+    // const 版本只查询已存在的池
+    auto key = std::type_index(typeid(ComponentType));
+    auto it = component_pools_.find(key);
+    if (it == component_pools_.end()) return nullptr;
+    return static_cast<const component_pool<ComponentType>*>(it->second.get())->get_component_of(entity);
 }
 
-template <typename T>
-bool World::HasComponent(FEntity E) const {
-    auto key = std::type_index(typeid(T));
-    auto it = _pools.find(key);
-    if (it == _pools.end()) return false;
-    return it->second->Has(E);
+template <typename ComponentType>
+bool world::has_component(entity_t entity) const {
+    auto key = std::type_index(typeid(ComponentType));
+    auto it = component_pools_.find(key);
+    if (it == component_pools_.end()) return false;
+    return it->second->has_component(entity);
 }
 
-template <typename... Ts>
-std::vector<FEntity> World::View() {
-    std::vector<FEntity> result;
+template <typename... ComponentTypes>
+std::vector<entity_t> world::view() {
+    std::vector<entity_t> result;
 
     // 找到最小的池以减少检查次数
     const IComponentPool* smallest = nullptr;
-    size_t smallestSize = ~size_t(0);
+    size_t smallest_size = ~size_t(0);
 
     auto consider = [&](const IComponentPool* pool) {
-        if (pool && pool->Size() < smallestSize) {
+        if (pool && pool->size() < smallest_size) {
             smallest = pool;
-            smallestSize = pool->Size();
+            smallest_size = pool->size();
         }
     };
-    (consider(&GetPool<Ts>()), ...);
+    (consider(&get_component_pool<ComponentTypes>()), ...);
 
-    if (!smallest || smallestSize == 0) return result;
+    if (!smallest || smallest_size == 0) return result;
 
     // 遍历最小池中的实体，检查是否拥有所有其他组件
-    for (size_t i = 0; i < smallest->Size(); ++i) {
-        FEntity e = smallest->OwnerAt(i);
-        if ((GetPool<Ts>().Has(e) && ...)) {
+    for (size_t i = 0; i < smallest->size(); ++i) {
+        entity_t e = smallest->owner_at(i);
+        if ((get_component_pool<ComponentTypes>().has_component(e) && ...)) {
             result.push_back(e);
         }
     }
     return result;
 }
 
-}  // namespace ECS
-}  // namespace Game
+}  // namespace ecs
+}  // namespace game
